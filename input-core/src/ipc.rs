@@ -2,7 +2,7 @@ use crate::events::{InputEvent, ShortcutCombo};
 use crate::overlay::{OverlayConfig, OverlayPosition, OverlayScale, Theme};
 use std::time::{Duration, SystemTime};
 use tokio::sync::broadcast;
-use tracing::debug;
+use tracing::trace;
 
 /// A processed shortcut event ready for overlay display.
 #[derive(Debug, Clone)]
@@ -146,7 +146,7 @@ impl MessageBus {
     pub fn publish_input(&self, event: InputEvent) -> usize {
         let count = self.input_tx.receiver_count();
         let _ = self.input_tx.send(event);
-        debug!("Input event published to {} subscriber(s)", count);
+        trace!("Input event published to {} subscriber(s)", count);
         count
     }
 
@@ -161,7 +161,7 @@ impl MessageBus {
     pub fn publish_shortcut(&self, event: ShortcutEvent) -> usize {
         let count = self.shortcut_tx.receiver_count();
         let _ = self.shortcut_tx.send(event);
-        debug!("Shortcut event published to {} subscriber(s)", count);
+        trace!("Shortcut event published to {} subscriber(s)", count);
         count
     }
 
@@ -176,7 +176,7 @@ impl MessageBus {
     pub fn publish_command(&self, cmd: OverlayCommand) -> usize {
         let count = self.command_tx.receiver_count();
         let _ = self.command_tx.send(cmd);
-        debug!("Overlay command published to {} subscriber(s)", count);
+        trace!("Overlay command published to {} subscriber(s)", count);
         count
     }
 
@@ -191,7 +191,7 @@ impl MessageBus {
     pub fn publish_settings(&self, update: SettingsUpdate) -> usize {
         let count = self.settings_tx.receiver_count();
         let _ = self.settings_tx.send(update);
-        debug!("Settings update published to {} subscriber(s)", count);
+        trace!("Settings update published to {} subscriber(s)", count);
         count
     }
 

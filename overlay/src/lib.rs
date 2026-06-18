@@ -6,7 +6,7 @@ use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Instant;
 use tokio::sync::broadcast;
-use tracing::{debug, info, warn};
+use tracing::{debug, trace, warn};
 
 /// Cross-platform overlay state manager.
 ///
@@ -151,7 +151,7 @@ impl OverlayManager {
         let mut running = true;
 
         tokio::spawn(async move {
-            info!("Overlay task started");
+            debug!("Overlay task started");
 
             loop {
                 tokio::select! {
@@ -167,7 +167,7 @@ impl OverlayManager {
                                 warn!("Overlay missed {} shortcut events", n);
                             }
                             Err(broadcast::error::RecvError::Closed) => {
-                                info!("Overlay shortcut channel closed");
+                                debug!("Overlay shortcut channel closed");
                                 break;
                             }
                         }
@@ -176,21 +176,18 @@ impl OverlayManager {
                     result = command_rx.recv() => {
                         match result {
                             Ok(cmd) => {
-                                info!("Overlay received command: {:?}", cmd);
+                                trace!(command = ?cmd, "Overlay received command");
                                 match cmd {
                                     OverlayCommand::Start => {
                                         running = true;
-                                        debug!("Overlay started");
                                     }
                                     OverlayCommand::Stop => {
                                         state.clear();
                                         running = false;
-                                        debug!("Overlay stopped");
                                     }
                                     OverlayCommand::Restart => {
                                         state.clear();
                                         running = true;
-                                        debug!("Overlay restarted");
                                     }
                                     OverlayCommand::Clear => {
                                         state.clear();
@@ -204,7 +201,7 @@ impl OverlayManager {
                                 warn!("Overlay missed {} commands", n);
                             }
                             Err(broadcast::error::RecvError::Closed) => {
-                                info!("Overlay command channel closed");
+                                debug!("Overlay command channel closed");
                                 break;
                             }
                         }
@@ -213,7 +210,7 @@ impl OverlayManager {
                     result = settings_rx.recv() => {
                         match result {
                             Ok(update) => {
-                                info!("Overlay received settings update: {:?}", update);
+                                trace!(update = ?update, "Overlay received settings update");
                                 let mut config = state.config().clone();
                                 update.apply(&mut config);
                                 state.update_config(config);
@@ -222,7 +219,7 @@ impl OverlayManager {
                                 warn!("Overlay missed {} settings updates", n);
                             }
                             Err(broadcast::error::RecvError::Closed) => {
-                                info!("Overlay settings channel closed");
+                                debug!("Overlay settings channel closed");
                                 break;
                             }
                         }
@@ -230,7 +227,7 @@ impl OverlayManager {
                 }
             }
 
-            info!("Overlay task ended");
+            debug!("Overlay task ended");
         });
 
         self.running = true;
@@ -357,14 +354,14 @@ impl OverlayRenderer for MockRenderer {
     async fn start(&mut self, _config: OverlayConfig) -> anyhow::Result<()> {
         self.running.store(true, Ordering::Relaxed);
         self.start_count.fetch_add(1, Ordering::Relaxed);
-        info!("MockRenderer started");
+        debug!("MockRenderer started");
         Ok(())
     }
 
     async fn stop(&mut self) -> anyhow::Result<()> {
         self.running.store(false, Ordering::Relaxed);
         self.stop_count.fetch_add(1, Ordering::Relaxed);
-        info!("MockRenderer stopped");
+        debug!("MockRenderer stopped");
         Ok(())
     }
 

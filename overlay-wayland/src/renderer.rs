@@ -7,7 +7,7 @@ use input_core::traits::OverlayRenderer;
 use std::os::unix::io::{AsFd, AsRawFd};
 use std::time::Duration;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use wayland_client::globals::{registry_queue_init, GlobalListContents};
 use wayland_client::protocol::{wl_buffer, wl_compositor, wl_output, wl_registry, wl_shm, wl_shm_pool, wl_surface};
@@ -171,7 +171,7 @@ impl OverlayRenderer for WaylandRenderer {
         });
 
         self.handle = Some(handle);
-        info!("WaylandRenderer started");
+        info!("Wayland renderer started");
         Ok(())
     }
 
@@ -182,7 +182,7 @@ impl OverlayRenderer for WaylandRenderer {
         if let Some(handle) = self.handle.take() {
             let _ = handle.await;
         }
-        info!("WaylandRenderer stopped");
+        info!("Wayland renderer stopped");
         Ok(())
     }
 
@@ -256,7 +256,7 @@ fn run_wayland_event_loop(
         .bind(&qh, 1..=1, ())
         .map_err(|e| WaylandError::MissingProtocol(format!("zwlr_layer_shell_v1: {}", e)))?;
 
-    info!("Wayland globals acquired");
+    info!(wayland_globals = true, "Wayland renderer initialized");
 
     let wayland_globals = WaylandGlobals { compositor, shm, layer_shell };
     let mut state = AppState::new();
@@ -266,9 +266,15 @@ fn run_wayland_event_loop(
         WaylandError::Connection(format!("roundtrip failed: {}", e))
     })?;
 
-    info!("Outputs found: {}", state.outputs.len());
+    info!(outputs = state.outputs.len(), "Outputs discovered");
     for info in &state.outputs {
-        info!("  output: {} ({}x{}, scale={})", info.name, info.width, info.height, info.scale);
+        debug!(
+            output = %info.name,
+            width = info.width,
+            height = info.height,
+            scale = info.scale,
+            "Output details"
+        );
     }
 
     let mut shortcut_rx = bus.subscribe_shortcut();
@@ -291,7 +297,12 @@ fn run_wayland_event_loop(
                 surface = Some(s);
                 layer_surface = Some(ls);
                 shm_buf = Some(ShmBuffer::create(&wayland_globals, w, h, &qh)?);
-                info!("Initial layer surface created ({}x{}, scale={})", w, h, scale);
+                info!(
+                    width = w,
+                    height = h,
+                    scale,
+                    "Layer surface created"
+                );
             }
             Err(e) => warn!("Failed to create layer surface: {}", e),
         }
@@ -404,7 +415,7 @@ fn run_wayland_event_loop(
 
     if let Some(s) = surface { s.destroy(); }
     if let Some(ls) = layer_surface { ls.destroy(); }
-    info!("Wayland event loop ended");
+    debug!("Wayland event loop ended");
     Ok(())
 }
 
@@ -427,11 +438,8 @@ fn create_layer_surface(
             (Some(proxy.clone()), scale)
         }
         None => {
-            if config.monitor.is_some() {
-                warn!(
-                    "Monitor '{}' not found, using default",
-                    config.monitor.as_deref().unwrap_or("")
-                );
+            if let Some(name) = &config.monitor {
+                warn!(monitor = %name, "Monitor not found, using default");
             }
             (None, 1)
         }
@@ -458,7 +466,7 @@ fn create_layer_surface(
     layer_surface.set_size(w, h);
     surface.commit();
 
-    info!("Layer surface created: {}x{} (scale={})", w, h, scale);
+    debug!(width = w, height = h, scale, "Layer surface created");
     Ok((surface, layer_surface, scale))
 }
 
@@ -583,7 +591,7 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for AppState {
                         proxy_id,
                     });
                     state.output_proxies.push(proxy);
-                    debug!("wl_output {} added (v{}, id={})", name, version, proxy_id);
+                    trace!(name, version, proxy_id, "wl_output added");
                 }
             }
             wl_registry::Event::GlobalRemove { name } => {
@@ -643,9 +651,9 @@ impl Dispatch<zwlr_layer_shell_v1::ZwlrLayerShellV1, ()> for AppState {
 impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for AppState {
     fn event(_: &mut Self, _: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, event: zwlr_layer_surface_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
         match event {
-            zwlr_layer_surface_v1::Event::Closed => debug!("Layer surface closed"),
+            zwlr_layer_surface_v1::Event::Closed => trace!("Layer surface closed"),
             zwlr_layer_surface_v1::Event::Configure { serial, width: _, height: _ } => {
-                debug!("Layer surface configure (serial={})", serial);
+                trace!(serial, "Layer surface configure");
             }
             _ => {}
         }
