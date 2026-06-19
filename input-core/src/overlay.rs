@@ -17,11 +17,11 @@ pub struct OverlayConfig {
 impl Default for OverlayConfig {
     fn default() -> Self {
         Self {
-            position: OverlayPosition::TopRight,
+            position: OverlayPosition::BottomCenter,
             scale: OverlayScale::Medium,
             opacity: 0.9,
-            display_duration: Duration::from_secs(3),
-            history_length: 5,
+            display_duration: Duration::from_millis(1500),
+            history_length: 3,
             theme: Theme::Dark,
             monitor: None,
         }

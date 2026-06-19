@@ -16,13 +16,18 @@ use wayland_protocols_wlr::layer_shell::v1::client::{
     zwlr_layer_shell_v1, zwlr_layer_surface_v1,
 };
 
-const BASE_WIDTH: i32 = 400;
-const BASE_HEIGHT: i32 = 120;
-const CORNER_RADIUS: f64 = 12.0;
-const PADDING: f64 = 16.0;
-const FONT_SIZE: f64 = 20.0;
-const BG_COLOR: (f64, f64, f64) = (0.13, 0.13, 0.13);
+const KEYCAP_PADDING_X: f64 = 14.0;
+const KEYCAP_PADDING_Y: f64 = 8.0;
+const KEYCAP_GAP: f64 = 6.0;
+const ROW_GAP: f64 = 6.0;
+const SURFACE_MARGIN: f64 = 12.0;
+const CORNER_RADIUS: f64 = 8.0;
+const FONT_SIZE: f64 = 24.0;
+const KEYCAP_BG: (f64, f64, f64) = (0.15, 0.15, 0.15);
+const KEYCAP_BORDER: (f64, f64, f64) = (0.3, 0.3, 0.3);
 const TEXT_COLOR: (f64, f64, f64) = (0.95, 0.95, 0.95);
+const SEP_COLOR: (f64, f64, f64) = (0.6, 0.6, 0.6);
+const MAX_HISTORY_ROWS: usize = 3;
 
 enum RendererCommand {
     Update(DisplayEvent),
@@ -172,7 +177,7 @@ impl OverlayRenderer for WaylandRenderer {
         });
 
         self.handle = Some(handle);
-        info!("Wayland renderer started");
+        info!("Overlay started");
         Ok(())
     }
 
@@ -183,7 +188,7 @@ impl OverlayRenderer for WaylandRenderer {
         if let Some(handle) = self.handle.take() {
             let _ = handle.await;
         }
-        info!("Wayland renderer stopped");
+        info!("Overlay stopped");
         Ok(())
     }
 
@@ -207,7 +212,7 @@ impl OverlayRenderer for WaylandRenderer {
 struct AppState {
     outputs: Vec<OutputInfo>,
     output_proxies: Vec<wl_output::WlOutput>,
-    needs_surface_commit: bool,
+    configured: bool,
 }
 
 impl AppState {
@@ -215,7 +220,7 @@ impl AppState {
         Self {
             outputs: Vec::new(),
             output_proxies: Vec::new(),
-            needs_surface_commit: false,
+            configured: false,
         }
     }
 
@@ -243,51 +248,33 @@ fn run_wayland_event_loop(
 ) -> anyhow::Result<()> {
     let conn = Connection::connect_to_env()
         .map_err(|e| WaylandError::Connection(e.to_string()))?;
-    info!("Wayland connection established");
 
     let (globals, mut event_queue) = registry_queue_init::<AppState>(&conn)
         .map_err(|e| WaylandError::Connection(format!("registry_queue_init: {}", e)))?;
 
     let qh = event_queue.handle();
 
-    // Log all registry globals at startup
     let all_globals = globals.contents().clone_list();
-    info!("Registry globals ({}):", all_globals.len());
-    for g in &all_globals {
-        info!(name = %g.interface, version = g.version, "  global");
-    }
 
-    // Bind singleton globals
-    info!("Binding singleton globals...");
     let compositor: wl_compositor::WlCompositor = globals
-        .bind(&qh, 1..=1, ())
+        .bind(&qh, 4..=5, ())
         .map_err(|e| WaylandError::MissingProtocol(format!("wl_compositor: {}", e)))?;
-    info!("  wl_compositor bound");
 
     let shm: wl_shm::WlShm = globals
         .bind(&qh, 1..=1, ())
         .map_err(|e| WaylandError::MissingProtocol(format!("wl_shm: {}", e)))?;
-    info!("  wl_shm bound");
 
     let layer_shell: zwlr_layer_shell_v1::ZwlrLayerShellV1 = globals
         .bind(&qh, 1..=1, ())
         .map_err(|e| WaylandError::MissingProtocol(format!("zwlr_layer_shell_v1: {}", e)))?;
-    info!("  zwlr_layer_shell_v1 bound");
 
     let wayland_globals = WaylandGlobals { compositor, shm, layer_shell };
 
-    // Bind wl_output globals manually via the registry.
-    // registry_queue_init consumed the initial Global events internally,
-    // so the Dispatch impl was NOT called for them. We iterate GlobalListContents
-    // and bind each wl_output by its global ID.
     let mut state = AppState::new();
     let registry = globals.registry();
-    let mut output_count = 0;
     for g in &all_globals {
         if g.interface == "wl_output" {
-            output_count += 1;
             let version = g.version.min(4);
-            info!(global_id = g.name, version, "Binding wl_output");
             let proxy: wl_output::WlOutput = registry.bind(g.name, version, &qh, ());
             let proxy_id = proxy.id().protocol_id();
             state.outputs.push(OutputInfo {
@@ -299,25 +286,19 @@ fn run_wayland_event_loop(
                 global_id: g.name,
             });
             state.output_proxies.push(proxy);
-            info!(global_id = g.name, proxy_id, "wl_output bound");
         }
     }
-    info!(count = output_count, "wl_output globals found");
 
-    // Roundtrip to receive wl_output geometry/mode/scale events
-    info!("Post-bind roundtrip for output metadata...");
     event_queue.roundtrip(&mut state).map_err(|e| {
         WaylandError::Connection(format!("output roundtrip failed: {}", e))
     })?;
 
-    info!("Output discovered:");
     for info in &state.outputs {
-        info!(name = %info.name, width = info.width, height = info.height, scale = info.scale, "");
+        info!(name = %info.name, w = info.width, h = info.height, scale = info.scale, "Output");
     }
-    info!(count = state.outputs.len(), "Outputs discovered");
 
     if state.outputs.is_empty() {
-        warn!("No outputs discovered - overlay will not be visible");
+        warn!("No outputs discovered");
     }
 
     let mut shortcut_rx = bus.subscribe_shortcut();
@@ -331,55 +312,34 @@ fn run_wayland_event_loop(
     let mut current_combos: Vec<ShortcutCombo> = Vec::new();
     let mut running = true;
 
-    // Create initial surface
     if !state.outputs.is_empty() {
-        info!("Creating initial layer surface...");
         match create_layer_surface(&wayland_globals, &config, &state, &qh) {
-            Ok((s, ls, scale)) => {
-                let w = BASE_WIDTH * scale;
-                let h = BASE_HEIGHT * scale;
+            Ok((s, ls, _scale)) => {
                 surface = Some(s);
                 layer_surface = Some(ls);
-                shm_buf = Some(ShmBuffer::create(&wayland_globals, w, h, &qh)?);
-                info!("Layer surface created");
-                info!(width = w, height = h, scale, "Layer surface configured");
             }
             Err(e) => {
                 warn!("Failed to create layer surface: {}", e);
-                warn!("Continuing without overlay - will retry on Restart command");
             }
         }
     } else {
-        warn!("No outputs available, cannot create layer surface");
+        warn!("No outputs available");
     }
 
-    info!("Renderer ready");
-
     loop {
-        // Read pending wayland events (non-blocking)
         if let Some(guard) = event_queue.prepare_read() {
             let _ = guard.read();
         }
         let _ = event_queue.dispatch_pending(&mut state);
-
-        if state.needs_surface_commit {
-            if let Some(ref s) = surface {
-                s.commit();
-            }
-            state.needs_surface_commit = false;
-        }
 
         while let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
                 RendererCommand::Update(event) => {
                     match &event {
                         DisplayEvent::Shortcut(combo) => {
-                            info!("Renderer received event");
-                            info!("Shortcut received: {}", combo.display);
                             current_combos.clear();
                             current_combos.push(combo.clone());
                             animation.show(config.opacity);
-                            info!("Overlay updated");
                         }
                         DisplayEvent::History(combos) => {
                             current_combos = combos.clone();
@@ -404,12 +364,9 @@ fn run_wayland_event_loop(
         }
 
         while let Ok(event) = shortcut_rx.try_recv() {
-            info!("Renderer received event");
-            info!("Shortcut received: {}", event.combo.display);
             current_combos.clear();
             current_combos.push(event.combo);
             animation.show(config.opacity);
-            info!("Overlay updated");
         }
 
         while let Ok(cmd) = command_rx.try_recv() {
@@ -422,12 +379,10 @@ fn run_wayland_event_loop(
                     if let Some(s) = surface.take() { s.destroy(); }
                     if let Some(ls) = layer_surface.take() { ls.destroy(); }
                     shm_buf = None;
-                    if let Ok((s, ls, scale)) = create_layer_surface(&wayland_globals, &config, &state, &qh) {
-                        let w = BASE_WIDTH * scale;
-                        let h = BASE_HEIGHT * scale;
+                    state.configured = false;
+                    if let Ok((s, ls, _scale)) = create_layer_surface(&wayland_globals, &config, &state, &qh) {
                         surface = Some(s);
                         layer_surface = Some(ls);
-                        shm_buf = Some(ShmBuffer::create(&wayland_globals, w, h, &qh)?);
                     }
                 }
                 OverlayCommand::Clear => {
@@ -446,17 +401,49 @@ fn run_wayland_event_loop(
             animation.update_config(&config);
         }
 
-        if animation.is_visible() {
+        if !state.configured {
+            animation.tick();
+        } else if animation.is_visible() {
             let needs_redraw = animation.tick();
             if needs_redraw {
                 let opacity = animation.current_opacity();
                 if animation.is_visible() {
-                    if let (Some(ref buf), Some(ref s)) = (&shm_buf, &surface) {
-                        render_frame(buf, &current_combos, opacity);
-                        s.attach(Some(&buf.buffer), 0, 0);
-                        s.damage_buffer(0, 0, buf.width, buf.height);
-                        s.commit();
-                        info!("Surface committed");
+                    if let (Some(ref s), Some(ref ls)) = (&surface, &layer_surface) {
+                        let (buf_w, buf_h, _keycap_count) = compute_surface_size(&current_combos);
+
+                        if buf_w == 0 || buf_h == 0 {
+                            s.attach(None, 0, 0);
+                            s.commit();
+                        } else {
+                            let needs_realloc = match &shm_buf {
+                                Some(b) => buf_w > b.width || buf_h > b.height,
+                                None => true,
+                            };
+                            if needs_realloc {
+                                if let Some(old_buf) = shm_buf.take() {
+                                    s.attach(None, 0, 0);
+                                    s.commit();
+                                    drop(old_buf);
+                                }
+                                match ShmBuffer::create(&wayland_globals, buf_w, buf_h, &qh) {
+                                    Ok(new_buf) => {
+                                        shm_buf = Some(new_buf);
+                                        ls.set_size(buf_w as u32, buf_h as u32);
+                                        s.commit();
+                                    }
+                                    Err(e) => {
+                                        error!("Buffer allocation failed: {:?}", e);
+                                    }
+                                }
+                            }
+
+                            if let Some(ref buf) = shm_buf {
+                                render_keycaps(buf, &current_combos, opacity);
+                                s.attach(Some(&buf.buffer), 0, 0);
+                                s.damage_buffer(0, 0, buf.width, buf.height);
+                                s.commit();
+                            }
+                        }
                     }
                 } else {
                     if let Some(ref s) = surface {
@@ -476,7 +463,7 @@ fn run_wayland_event_loop(
 
     if let Some(s) = surface { s.destroy(); }
     if let Some(ls) = layer_surface { ls.destroy(); }
-    debug!("Wayland event loop ended");
+    debug!("Event loop ended");
     Ok(())
 }
 
@@ -486,33 +473,21 @@ fn create_layer_surface(
     state: &AppState,
     qh: &QueueHandle<AppState>,
 ) -> Result<(wl_surface::WlSurface, zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, i32), WaylandError> {
-    info!("Creating layer surface");
-
     let surface = globals.compositor.create_surface(qh, ());
-    info!("  wl_surface created");
 
     let layer = zwlr_layer_shell_v1::Layer::Overlay;
 
-    // Select output: use config.monitor if set, otherwise first available output
     let (output_proxy, scale) = match state.find_output_proxy(config.monitor.as_deref()) {
         Some(proxy) => {
             let scale = state
                 .find_output(config.monitor.as_deref())
                 .map(|(_, o)| o.scale)
                 .unwrap_or(1);
-            info!(scale, "  Using output for layer surface");
             (Some(proxy.clone()), scale)
         }
-        None => {
-            if let Some(name) = &config.monitor {
-                warn!(monitor = %name, "  Monitor not found, using default");
-            }
-            info!("  No specific output, using compositor default");
-            (None, 1)
-        }
+        None => (None, 1),
     };
 
-    info!("  Calling get_layer_surface...");
     let layer_surface = globals.layer_shell.get_layer_surface(
         &surface,
         output_proxy.as_ref(),
@@ -521,41 +496,111 @@ fn create_layer_surface(
         qh,
         (),
     );
-    info!("  Layer surface obtained");
 
     let anchor_bits = position_to_anchor_bits(config.position);
-    info!(anchor_bits, "  set_anchor called");
     layer_surface.set_anchor(zwlr_layer_surface_v1::Anchor::from_bits_truncate(anchor_bits));
     layer_surface.set_exclusive_zone(-1);
     layer_surface.set_keyboard_interactivity(
         zwlr_layer_surface_v1::KeyboardInteractivity::None,
     );
 
-    let w = (BASE_WIDTH * scale) as u32;
-    let h = (BASE_HEIGHT * scale) as u32;
-    layer_surface.set_size(w, h);
-    info!(width = w, height = h, scale, "  set_size done");
     surface.commit();
-    info!("  Surface committed");
 
     Ok((surface, layer_surface, scale))
 }
 
 fn position_to_anchor_bits(pos: OverlayPosition) -> u32 {
-    let mut bits: u32 = 0;
     match pos {
-        OverlayPosition::TopLeft => { bits |= 1 | 4; }
-        OverlayPosition::TopRight => { bits |= 1 | 8; }
-        OverlayPosition::TopCenter => { bits |= 1; }
-        OverlayPosition::BottomLeft => { bits |= 2 | 4; }
-        OverlayPosition::BottomRight => { bits |= 2 | 8; }
-        OverlayPosition::BottomCenter => { bits |= 2; }
-        OverlayPosition::Center => {}
+        OverlayPosition::TopLeft => 1 | 4,
+        OverlayPosition::TopRight => 1 | 8,
+        OverlayPosition::TopCenter => 1,
+        OverlayPosition::BottomLeft => 2 | 4,
+        OverlayPosition::BottomRight => 2 | 8,
+        OverlayPosition::BottomCenter => 2,
+        OverlayPosition::Center => 2,
     }
-    bits
 }
 
-fn render_frame(shm: &ShmBuffer, combos: &[ShortcutCombo], opacity: f32) {
+fn combo_to_key_parts(combo: &ShortcutCombo) -> Vec<String> {
+    let mut parts = Vec::new();
+    if combo.modifiers.ctrl {
+        parts.push("Ctrl".to_string());
+    }
+    if combo.modifiers.alt {
+        parts.push("Alt".to_string());
+    }
+    if combo.modifiers.shift {
+        parts.push("Shift".to_string());
+    }
+    if combo.modifiers.super_key {
+        parts.push("Super".to_string());
+    }
+    if let Some(key) = &combo.key {
+        parts.push(key.label());
+    }
+    parts
+}
+
+fn compute_surface_size(combos: &[ShortcutCombo]) -> (i32, i32, usize) {
+    let visible: Vec<&ShortcutCombo> = combos.iter().take(MAX_HISTORY_ROWS).collect();
+    if visible.is_empty() {
+        return (0, 0, 0);
+    }
+
+    let mut max_row_width = 0.0_f64;
+    let mut total_keycaps = 0usize;
+
+    for combo in &visible {
+        let parts = combo_to_key_parts(combo);
+        if parts.is_empty() {
+            continue;
+        }
+        total_keycaps += parts.len();
+
+        let sep_w = measure_text_width("+");
+        let mut row_width = 0.0_f64;
+        for (i, label) in parts.iter().enumerate() {
+            row_width += measure_text_width(label) + KEYCAP_PADDING_X * 2.0;
+            if i < parts.len() - 1 {
+                row_width += sep_w + KEYCAP_GAP * 2.0;
+            }
+        }
+        max_row_width = max_row_width.max(row_width);
+    }
+
+    if total_keycaps == 0 {
+        return (0, 0, 0);
+    }
+
+    let keycap_h = FONT_SIZE + KEYCAP_PADDING_Y * 2.0;
+    let content_h = visible.len() as f64 * keycap_h
+        + (visible.len().saturating_sub(1)) as f64 * ROW_GAP;
+
+    let surf_w = (max_row_width + SURFACE_MARGIN * 2.0).ceil() as i32;
+    let surf_h = (content_h + SURFACE_MARGIN * 2.0).ceil() as i32;
+
+    (surf_w.max(1), surf_h.max(1), total_keycaps)
+}
+
+fn measure_text_width(label: &str) -> f64 {
+    let surface = match cairo::ImageSurface::create(cairo::Format::ARgb32, 1, 1) {
+        Ok(s) => s,
+        Err(_) => return label.len() as f64 * FONT_SIZE * 0.6,
+    };
+    let cr = match cairo::Context::new(&surface) {
+        Ok(c) => c,
+        Err(_) => return label.len() as f64 * FONT_SIZE * 0.6,
+    };
+    cr.select_font_face("sans-serif", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+    cr.set_font_size(FONT_SIZE);
+    if let Ok(extents) = cr.text_extents(label) {
+        extents.x_bearing() + extents.width()
+    } else {
+        label.len() as f64 * FONT_SIZE * 0.6
+    }
+}
+
+fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], opacity: f32) {
     let width = shm.width;
     let height = shm.height;
 
@@ -567,68 +612,116 @@ fn render_frame(shm: &ShmBuffer, combos: &[ShortcutCombo], opacity: f32) {
         }
     };
 
-    let cr = match cairo::Context::new(&image_surface) {
-        Ok(cr) => cr,
-        Err(e) => {
-            error!("Cairo context create failed: {:?}", e);
-            return;
+    let visible: Vec<&ShortcutCombo> = combos.iter().take(MAX_HISTORY_ROWS).collect();
+    let keycap_h = FONT_SIZE + KEYCAP_PADDING_Y * 2.0;
+
+    {
+        let cr = match cairo::Context::new(&image_surface) {
+            Ok(cr) => cr,
+            Err(e) => {
+                error!("Cairo context create failed: {:?}", e);
+                return;
+            }
+        };
+
+        let _ = cr.set_operator(cairo::Operator::Clear);
+        let _ = cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
+        let _ = cr.paint();
+
+        let _ = cr.set_operator(cairo::Operator::Over);
+
+        cr.select_font_face("sans-serif", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+        cr.set_font_size(FONT_SIZE);
+
+        let mut y = SURFACE_MARGIN;
+
+        for combo in &visible {
+            let parts = combo_to_key_parts(combo);
+            if parts.is_empty() {
+                continue;
+            }
+
+            let mut x = SURFACE_MARGIN;
+
+            for (i, label) in parts.iter().enumerate() {
+                let kw = measure_text_width(label) + KEYCAP_PADDING_X * 2.0;
+
+                let _ = cr.new_path();
+                draw_rounded_rect(&cr, x, y, kw, keycap_h, CORNER_RADIUS);
+                let _ = cr.set_source_rgba(
+                    KEYCAP_BG.0, KEYCAP_BG.1, KEYCAP_BG.2,
+                    opacity as f64,
+                );
+                let _ = cr.fill_preserve();
+
+                let _ = cr.set_source_rgba(
+                    KEYCAP_BORDER.0, KEYCAP_BORDER.1, KEYCAP_BORDER.2,
+                    opacity as f64 * 0.5,
+                );
+                cr.set_line_width(1.0);
+                let _ = cr.stroke();
+
+                if let Ok(extents) = cr.text_extents(label) {
+                    let visual_w = extents.x_bearing() + extents.width();
+                    let text_x = x + (kw - visual_w) / 2.0 - extents.x_bearing();
+                    let text_y = y + (keycap_h - extents.height()) / 2.0 - extents.y_bearing();
+                    let _ = cr.set_source_rgba(
+                        TEXT_COLOR.0, TEXT_COLOR.1, TEXT_COLOR.2,
+                        opacity as f64,
+                    );
+                    cr.move_to(text_x, text_y);
+                    let _ = cr.show_text(label);
+                }
+
+                x += kw;
+
+                if i < parts.len() - 1 {
+                    if let Ok(sep_ext) = cr.text_extents("+") {
+                        let sep_visual_w = sep_ext.x_bearing() + sep_ext.width();
+                        let sep_x = x + KEYCAP_GAP - sep_visual_w / 2.0;
+                        let sep_y = y + (keycap_h - sep_ext.height()) / 2.0 - sep_ext.y_bearing();
+                        let _ = cr.set_source_rgba(
+                            SEP_COLOR.0, SEP_COLOR.1, SEP_COLOR.2,
+                            opacity as f64 * 0.7,
+                        );
+                        cr.move_to(sep_x, sep_y);
+                        let _ = cr.show_text("+");
+                    }
+                    x += measure_text_width("+") + KEYCAP_GAP;
+                }
+            }
+
+            y += keycap_h + ROW_GAP;
         }
-    };
 
-    // Clear to transparent
-    let _ = cr.set_operator(cairo::Operator::Clear);
-    let _ = cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
-    let _ = cr.paint();
-
-    let _ = cr.set_operator(cairo::Operator::Over);
-
-    // Draw rounded rectangle background
-    draw_rounded_rect(&cr, width as f64, height as f64, CORNER_RADIUS);
-    let _ = cr.set_source_rgba(BG_COLOR.0, BG_COLOR.1, BG_COLOR.2, opacity as f64);
-    let _ = cr.fill_preserve();
-
-    // Subtle border
-    let _ = cr.set_source_rgba(0.3, 0.3, 0.3, opacity as f64 * 0.5);
-    cr.set_line_width(1.0);
-    let _ = cr.stroke();
-
-    // Draw text
-    let _ = cr.set_source_rgba(TEXT_COLOR.0, TEXT_COLOR.1, TEXT_COLOR.2, opacity as f64);
-    cr.select_font_face("sans-serif", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
-    cr.set_font_size(FONT_SIZE);
-
-    let mut y = PADDING + FONT_SIZE;
-    for combo in combos.iter().take(3) {
-        if let Ok(extents) = cr.text_extents(&combo.display) {
-            let x = (width as f64 - extents.width()) / 2.0;
-            cr.move_to(x, y);
-            let _ = cr.show_text(&combo.display);
-        }
-        y += FONT_SIZE + 8.0;
+        let _ = cr.show_page();
     }
-
-    let _ = cr.show_page();
 
     image_surface.flush();
 
-    let data_result = image_surface.data();
-    if let Ok(data) = data_result {
+    {
+        let data = match image_surface.data() {
+            Ok(d) => d,
+            Err(e) => {
+                error!("Failed to read Cairo surface data: {:?}", e);
+                return;
+            }
+        };
         shm.write_pixels(&data);
     }
 }
 
-fn draw_rounded_rect(cr: &cairo::Context, w: f64, h: f64, r: f64) {
+fn draw_rounded_rect(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, r: f64) {
     cr.new_sub_path();
-    cr.arc(w - r, r, r, -std::f64::consts::FRAC_PI_2, 0.0);
-    cr.arc(w - r, h - r, r, 0.0, std::f64::consts::FRAC_PI_2);
-    cr.arc(r, h - r, r, std::f64::consts::FRAC_PI_2, std::f64::consts::PI);
-    cr.arc(r, r, r, std::f64::consts::PI, 3.0 * std::f64::consts::FRAC_PI_2);
+    cr.arc(x + w - r, y + r, r, -std::f64::consts::FRAC_PI_2, 0.0);
+    cr.arc(x + w - r, y + h - r, r, 0.0, std::f64::consts::FRAC_PI_2);
+    cr.arc(x + r, y + h - r, r, std::f64::consts::FRAC_PI_2, std::f64::consts::PI);
+    cr.arc(x + r, y + r, r, std::f64::consts::PI, 3.0 * std::f64::consts::FRAC_PI_2);
     cr.close_path();
 }
 
 // ── Wayland dispatch implementations ────────────────────────────
 
-// Ignore events from these object types
 delegate_noop!(AppState: ignore wl_compositor::WlCompositor);
 delegate_noop!(AppState: ignore wl_shm::WlShm);
 delegate_noop!(AppState: ignore wl_shm_pool::WlShmPool);
@@ -646,12 +739,6 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for AppState {
     ) {
         match event {
             wl_registry::Event::Global { name, interface, version } => {
-                info!(
-                    global_id = name,
-                    interface = %interface,
-                    version,
-                    "Registry global (runtime)"
-                );
                 if interface == "wl_output" {
                     let proxy: wl_output::WlOutput = _proxy.bind(name, version.min(4), qh, ());
                     let proxy_id = proxy.id().protocol_id();
@@ -664,16 +751,12 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for AppState {
                         global_id: name,
                     });
                     state.output_proxies.push(proxy);
-                    info!(global_id = name, proxy_id, "wl_output bound (runtime)");
                 }
             }
             wl_registry::Event::GlobalRemove { name } => {
                 if let Some(idx) = state.outputs.iter().position(|o| o.global_id == name) {
-                    let removed = state.outputs.remove(idx);
+                    state.outputs.remove(idx);
                     state.output_proxies.remove(idx);
-                    info!(global_id = name, name = %removed.name, "Output removed");
-                } else {
-                    info!(global_id = name, "Global removed (not an output)");
                 }
             }
             _ => {}
@@ -699,25 +782,20 @@ impl Dispatch<wl_output::WlOutput, ()> for AppState {
         let info = &mut state.outputs[idx];
         match event {
             wl_output::Event::Geometry { make, .. } => {
-                if make.is_empty() {
-                    // Fallback to synthetic name only when no real name is available
-                    info.name = format!("output-{}", info.proxy_id);
-                    info!(name = %info.name, global_id = info.global_id, "Output geometry (no make, synthetic name)");
-                } else {
+                if !make.is_empty() {
                     info.name = make.clone();
-                    info!(name = %info.name, global_id = info.global_id, "Output geometry received");
+                } else {
+                    info.name = format!("output-{}", info.proxy_id);
                 }
             }
             wl_output::Event::Scale { factor } => {
                 info.scale = factor;
-                info!(factor, global_id = info.global_id, "Output scale received");
             }
             wl_output::Event::Mode { width, height, flags, .. } => {
                 if let WEnum::Value(f) = flags {
                     if f.bits() & 1 != 0 {
                         info.width = width;
                         info.height = height;
-                        info!(width, height, global_id = info.global_id, "Output mode received");
                     }
                 }
             }
@@ -734,10 +812,9 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for AppState {
     fn event(state: &mut Self, proxy: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, event: zwlr_layer_surface_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
         match event {
             zwlr_layer_surface_v1::Event::Closed => warn!("Layer surface closed by compositor"),
-            zwlr_layer_surface_v1::Event::Configure { serial, width, height } => {
-                info!(serial, width, height, "Layer surface configure received");
+            zwlr_layer_surface_v1::Event::Configure { serial, width: _, height: _ } => {
                 proxy.ack_configure(serial);
-                state.needs_surface_commit = true;
+                state.configured = true;
             }
             _ => {}
         }
