@@ -1,9 +1,13 @@
 use eframe::egui;
 use input_core::config::FileConfig;
+use input_core::events::{ModifierState, ProcessedEvent, ShortcutCombo};
 use input_core::ipc::MessageBus;
-use input_core::overlay::OverlayConfig;
+use input_core::overlay::{DisplayEvent, OverlayConfig};
+use input_core::processor::DefaultEventProcessor;
+use input_core::traits::{EventProcessor, KeyboardCaptureProvider, OverlayRenderer, ProcessorConfig};
 use overlay_wayland::WaylandRenderer;
-use input_core::traits::OverlayRenderer;
+use platform_linux::evdev_capture::EvdevCapture;
+use std::time::Duration;
 use tracing::{error, info};
 
 fn parse_log_level() -> String {
@@ -17,7 +21,33 @@ fn parse_log_level() -> String {
     std::env::var("RUST_LOG").unwrap_or_else(|_| "warn".into())
 }
 
+fn print_help() {
+    println!("EchoInput — keyboard visualization overlay for Wayland");
+    println!();
+    println!("USAGE:");
+    println!("  echoinput                 Run the overlay (default)");
+    println!("  echoinput --settings      Open settings GUI");
+    println!("  echoinput --help          Show this help");
+    println!();
+    println!("OPTIONS:");
+    println!("  --debug     Enable debug logging");
+    println!("  --trace     Enable trace logging (very verbose)");
+    println!();
+    println!("NOTES:");
+    println!("  - Requires read access to /dev/input/event* devices");
+    println!("  - If overlay doesn't appear, check: ls -la /dev/input/event*");
+    println!("  - Fix permissions: sudo usermod -aG input $USER  (then relogin)");
+    println!("  - Config saved to: ~/.config/echoinput/config.toml");
+}
+
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        print_help();
+        return;
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_new(parse_log_level())
@@ -25,7 +55,6 @@ fn main() {
         )
         .init();
 
-    let args: Vec<String> = std::env::args().collect();
     let settings_mode = args.iter().any(|a| a == "--settings");
 
     let file_config = FileConfig::load();
@@ -50,14 +79,71 @@ fn run_overlay(config: OverlayConfig) {
     rt.block_on(async {
         let mut renderer = WaylandRenderer::new(bus.clone());
 
-        if let Err(e) = renderer.start(config).await {
+        if let Err(e) = renderer.start(config.clone()).await {
             error!("Failed to start overlay: {}", e);
+            eprintln!("Error: Failed to start overlay: {}", e);
             return;
         }
 
-        // The Wayland renderer handles keyboard capture via wl_keyboard
-        // and overlay rendering internally. Just keep the runtime alive.
-        tokio::signal::ctrl_c().await.ok();
+        // Start evdev keyboard capture
+        let mut capture = match EvdevCapture::new() {
+            Ok(c) => c,
+            Err(e) => {
+                error!("Failed to create evdev capture: {}", e);
+                eprintln!("Error: Failed to create evdev capture: {}", e);
+                eprintln!("Hint: Check permissions on /dev/input/event*");
+                eprintln!("      Try: sudo usermod -aG input $USER  (then relogin)");
+                return;
+            }
+        };
+
+        let mut input_rx = capture.subscribe();
+
+        if let Err(e) = capture.start().await {
+            error!("Failed to start evdev capture: {}", e);
+            eprintln!("Error: Failed to start keyboard capture: {}", e);
+            eprintln!("Hint: No keyboard devices found. Check /dev/input/event* permissions.");
+            eprintln!("      Try: sudo usermod -aG input $USER  (then relogin)");
+            return;
+        }
+
+        eprintln!("EchoInput overlay running. Press keys to see visualization.");
+        eprintln!("Press Ctrl+C to quit.");
+
+        let mut processor = DefaultEventProcessor::new(ProcessorConfig {
+            group_shortcuts: true,
+            history_length: config.history_length,
+            dedup_window: Duration::from_millis(50),
+        });
+
+        // Process keyboard events from evdev and forward to overlay
+        loop {
+            tokio::select! {
+                Ok(event) = input_rx.recv() => {
+                    let processed = processor.process(event);
+                    for pe in processed {
+                        match pe {
+                            ProcessedEvent::Shortcut(combo) => {
+                                let _ = renderer.update(DisplayEvent::Shortcut(combo));
+                            }
+                            ProcessedEvent::RawKey(kbd) => {
+                                let combo = ShortcutCombo::new(
+                                    ModifierState::default(),
+                                    Some(kbd.key),
+                                );
+                                let _ = renderer.update(DisplayEvent::Shortcut(combo));
+                            }
+                            ProcessedEvent::ModifierChange(_) => {}
+                        }
+                    }
+                }
+                _ = tokio::signal::ctrl_c() => {
+                    break;
+                }
+            }
+        }
+
+        let _ = capture.stop().await;
         let _ = renderer.stop().await;
     });
 }
