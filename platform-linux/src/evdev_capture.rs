@@ -107,6 +107,14 @@ impl EvdevCapture {
                 "No keyboard devices found. Check permissions on /dev/input/event*. \
                  Try: sudo usermod -aG input $USER"
             );
+            eprintln!("WARNING: No keyboard devices found in /dev/input/event*");
+            eprintln!("  Check permissions: ls -la /dev/input/event*");
+            eprintln!("  Fix: sudo usermod -aG input $USER  (then relogin)");
+        } else {
+            eprintln!("DEBUG: Found {} keyboard device(s) in /dev/input/event*", devices.len());
+            for p in &devices {
+                eprintln!("  - {}", p.display());
+            }
         }
 
         devices
@@ -173,10 +181,12 @@ impl EvdevCapture {
 
         if devices.is_empty() {
             error!("No keyboard devices could be opened — capture thread exiting");
+            eprintln!("ERROR: No keyboard devices could be opened. Capture thread exiting.");
             return;
         }
 
         info!(devices = devices.len(), "Capture loop started");
+        eprintln!("DEBUG: Capture loop started with {} device(s)", devices.len());
 
         loop {
             let mut had_events = false;
@@ -253,12 +263,7 @@ impl EvdevCapture {
             KeyState::Released
         };
 
-        info!(
-            key = ?key,
-            state = ?state,
-            "EvdevCapture received {:?}",
-            key
-        );
+        eprintln!("DEBUG: evdev key={:?} state={:?} scancode={}", key, state, scancode);
 
         let event = InputEvent::Keyboard(KeyboardEvent {
             key,

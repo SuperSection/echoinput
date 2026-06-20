@@ -476,6 +476,7 @@ fn run_wayland_event_loop(
             match cmd {
                 RendererCommand::Update(event) => match &event {
                     DisplayEvent::Shortcut(combo) => {
+                        eprintln!("DEBUG: Renderer received shortcut: {}", combo.display);
                         current_combos.clear();
                         current_combos.push(combo.clone());
                         animation.show(config.opacity);
@@ -539,6 +540,8 @@ fn run_wayland_event_loop(
                 if let (Some(ref s), Some(ref ls)) = (&surface, &layer_surface) {
                     let (content_w, content_h, _keycap_count) =
                         compute_surface_size(&current_combos);
+
+                    eprintln!("DEBUG: Rendering overlay content_w={} content_h={} combos={}", content_w, content_h, current_combos.len());
 
                     if content_w == 0 || content_h == 0 {
                         s.attach(None, 0, 0);

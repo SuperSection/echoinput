@@ -8,7 +8,8 @@ use input_core::traits::{EventProcessor, KeyboardCaptureProvider, OverlayRendere
 use overlay_wayland::WaylandRenderer;
 use platform_linux::evdev_capture::EvdevCapture;
 use std::time::Duration;
-use tracing::{error, info};
+use tokio::sync::broadcast::error::RecvError;
+use tracing::{error, info, warn};
 
 fn parse_log_level() -> String {
     let args: Vec<String> = std::env::args().collect();
@@ -18,7 +19,7 @@ fn parse_log_level() -> String {
     if args.iter().any(|a| a == "--debug") {
         return "debug".into();
     }
-    std::env::var("RUST_LOG").unwrap_or_else(|_| "warn".into())
+    std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into())
 }
 
 fn print_help() {
@@ -51,7 +52,7 @@ fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_new(parse_log_level())
-                .unwrap_or_else(|_| "warn".into()),
+                .unwrap_or_else(|_| "info".into()),
         )
         .init();
 
@@ -116,28 +117,44 @@ fn run_overlay(config: OverlayConfig) {
             dedup_window: Duration::from_millis(50),
         });
 
+        let ctrl_c = tokio::signal::ctrl_c();
+        tokio::pin!(ctrl_c);
+
         // Process keyboard events from evdev and forward to overlay
         loop {
             tokio::select! {
-                Ok(event) = input_rx.recv() => {
-                    let processed = processor.process(event);
-                    for pe in processed {
-                        match pe {
-                            ProcessedEvent::Shortcut(combo) => {
-                                let _ = renderer.update(DisplayEvent::Shortcut(combo));
+                result = input_rx.recv() => {
+                    match result {
+                        Ok(event) => {
+                            let processed = processor.process(event);
+                            for pe in processed {
+                                match pe {
+                                    ProcessedEvent::Shortcut(combo) => {
+                                        let _ = renderer.update(DisplayEvent::Shortcut(combo));
+                                    }
+                                    ProcessedEvent::RawKey(kbd) => {
+                                        let combo = ShortcutCombo::new(
+                                            ModifierState::default(),
+                                            Some(kbd.key),
+                                        );
+                                        let _ = renderer.update(DisplayEvent::Shortcut(combo));
+                                    }
+                                    ProcessedEvent::ModifierChange(_) => {}
+                                }
                             }
-                            ProcessedEvent::RawKey(kbd) => {
-                                let combo = ShortcutCombo::new(
-                                    ModifierState::default(),
-                                    Some(kbd.key),
-                                );
-                                let _ = renderer.update(DisplayEvent::Shortcut(combo));
-                            }
-                            ProcessedEvent::ModifierChange(_) => {}
+                        }
+                        Err(RecvError::Lagged(n)) => {
+                            warn!("Input channel lagged, dropped {} events", n);
+                        }
+                        Err(RecvError::Closed) => {
+                            error!("Input channel closed — capture thread may have exited");
+                            eprintln!("Error: Input capture channel closed.");
+                            break;
                         }
                     }
                 }
-                _ = tokio::signal::ctrl_c() => {
+                _ = &mut ctrl_c => {
+                    eprintln!("\nShutting down...");
                     break;
                 }
             }
