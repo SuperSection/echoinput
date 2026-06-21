@@ -2,7 +2,9 @@ use crate::animation::Animation;
 use crate::error::WaylandError;
 use input_core::events::ShortcutCombo;
 use input_core::ipc::MessageBus;
-use input_core::overlay::{DisplayEvent, OverlayConfig, OverlayPosition};
+use input_core::overlay::{
+    DisplayEvent, KeycapStyle, OverlayConfig, OverlayPosition, TextCaps, TextVariant,
+};
 use std::os::unix::io::{AsFd, AsRawFd};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -21,26 +23,42 @@ use wayland_protocols_wlr::layer_shell::v1::client::{
     zwlr_layer_shell_v1, zwlr_layer_surface_v1,
 };
 
-const KEYCAP_PADDING_X: f64 = 18.0;
-const KEYCAP_PADDING_Y: f64 = 10.0;
 const KEYCAP_GAP: f64 = 8.0;
 const ROW_GAP: f64 = 8.0;
-const SURFACE_MARGIN: f64 = 16.0;
-const CORNER_RADIUS: f64 = 10.0;
-const FONT_SIZE: f64 = 26.0;
 const MAX_HISTORY_ROWS: usize = 5;
 const MAX_SEQUENCE_LENGTH: usize = 7;
 
-// Keyviz-inspired color palette
-const KEYCAP_BG: (f64, f64, f64) = (0.12, 0.12, 0.14);
-const KEYCAP_BG_TOP: (f64, f64, f64) = (0.22, 0.22, 0.25);
-const KEYCAP_BORDER: (f64, f64, f64) = (0.35, 0.35, 0.38);
-const TEXT_COLOR: (f64, f64, f64) = (0.96, 0.96, 0.96);
-const SEP_COLOR: (f64, f64, f64) = (0.55, 0.55, 0.6);
-const MODIFIER_BG_TOP: (f64, f64, f64) = (0.2, 0.35, 0.7);
-const MODIFIER_BORDER: (f64, f64, f64) = (0.3, 0.5, 0.9);
-const MODIFIER_TEXT: (f64, f64, f64) = (0.7, 0.85, 1.0);
-const SHADOW_COLOR: (f64, f64, f64, f64) = (0.0, 0.0, 0.0, 0.4);
+// ── Hex color parsing ──────────────────────────────────────────
+
+/// Parse a hex color string like "#RRGGBB" or "#RRGGBBAA" to (r, g, b, a) in 0.0-1.0.
+fn parse_hex_color(hex: &str) -> (f64, f64, f64, f64) {
+    let hex = hex.trim_start_matches('#');
+    match hex.len() {
+        6 => {
+            let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0) as f64 / 255.0;
+            let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0) as f64 / 255.0;
+            let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0) as f64 / 255.0;
+            (r, g, b, 1.0)
+        }
+        8 => {
+            let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0) as f64 / 255.0;
+            let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0) as f64 / 255.0;
+            let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0) as f64 / 255.0;
+            let a = u8::from_str_radix(&hex[6..8], 16).unwrap_or(255) as f64 / 255.0;
+            (r, g, b, a)
+        }
+        _ => (1.0, 1.0, 1.0, 1.0),
+    }
+}
+
+/// Darken a color by a factor (0.0 = original, 1.0 = black).
+fn darken(r: f64, g: f64, b: f64, factor: f64) -> (f64, f64, f64) {
+    (
+        r * (1.0 - factor),
+        g * (1.0 - factor),
+        b * (1.0 - factor),
+    )
+}
 
 enum RendererCommand {
     Update(DisplayEvent),
@@ -584,7 +602,7 @@ fn run_wayland_event_loop(
             if has_content {
                 if let (Some(ref s), Some(ref _ls)) = (&surface, &layer_surface) {
                     let (content_w, content_h, _keycap_count) =
-                        compute_surface_size(&current_combos);
+                        compute_surface_size(&current_combos, &config);
 
                     if content_w > 0 && content_h > 0 {
                         let render_w = if state.configure_width > 0 {
@@ -623,15 +641,16 @@ fn run_wayland_event_loop(
                         if let Some(ref buf) = *active_buf {
                             if *ready_flag {
                                 let offset_x = match config.position {
-                                    OverlayPosition::TopLeft | OverlayPosition::BottomLeft => SURFACE_MARGIN,
+                                    OverlayPosition::TopLeft | OverlayPosition::BottomLeft => config.margin_x as f64,
                                     OverlayPosition::TopRight | OverlayPosition::BottomRight => {
-                                        (buf.width as f64 - content_w as f64 - SURFACE_MARGIN).max(0.0)
+                                        (buf.width as f64 - content_w as f64 - config.margin_x as f64).max(0.0)
                                     }
                                     _ => ((buf.width - content_w) / 2).max(0) as f64,
                                 };
                                 render_keycaps(
                                     buf,
                                     &current_combos,
+                                    &config,
                                     opacity,
                                     animation.slide_offset(),
                                     animation.scale(),
@@ -805,33 +824,88 @@ fn position_to_anchor(config: &OverlayConfig) -> zwlr_layer_surface_v1::Anchor {
     }
 }
 
-fn combo_to_key_parts(combo: &ShortcutCombo) -> Vec<String> {
+fn combo_to_key_parts(combo: &ShortcutCombo, variant: &TextVariant) -> Vec<String> {
     let mut parts = Vec::new();
 
     // For key sequences, return all keys from the sequence
     if combo.is_sequence() {
-        return combo.key_sequence.iter().map(|k| k.label()).collect();
+        return combo
+            .key_sequence
+            .iter()
+            .map(|k| apply_text_variant(&k.label(), variant))
+            .collect();
     }
 
     if combo.modifiers.ctrl {
-        parts.push("Ctrl".to_string());
+        parts.push(apply_modifier_label("Ctrl", variant));
     }
     if combo.modifiers.alt {
-        parts.push("Alt".to_string());
+        parts.push(apply_modifier_label("Alt", variant));
     }
     if combo.modifiers.shift {
-        parts.push("Shift".to_string());
+        parts.push(apply_modifier_label("Shift", variant));
     }
     if combo.modifiers.super_key {
-        parts.push("Super".to_string());
+        parts.push(apply_modifier_label("Super", variant));
     }
     if let Some(key) = &combo.key {
-        parts.push(key.label());
+        parts.push(apply_text_variant(&key.label(), variant));
     }
     parts
 }
 
-fn compute_surface_size(combos: &[ShortcutCombo]) -> (i32, i32, usize) {
+fn apply_text_variant(label: &str, variant: &TextVariant) -> String {
+    match variant {
+        TextVariant::Full => label.to_string(),
+        TextVariant::Short => shorten_label(label),
+        TextVariant::Icon => {
+            if label.len() <= 2 {
+                label.to_string()
+            } else {
+                shorten_label(label)
+            }
+        }
+    }
+}
+
+fn apply_modifier_label(label: &str, variant: &TextVariant) -> String {
+    match variant {
+        TextVariant::Full => match label {
+            "Ctrl" => "Control".to_string(),
+            _ => label.to_string(),
+        },
+        TextVariant::Short | TextVariant::Icon => label.to_string(),
+    }
+}
+
+fn shorten_label(label: &str) -> String {
+    match label {
+        "Control" => "Ctrl".to_string(),
+        "Escape" => "Esc".to_string(),
+        "Delete" => "Del".to_string(),
+        "Insert" => "Ins".to_string(),
+        "PageUp" => "PgUp".to_string(),
+        "PageDown" => "PgDn".to_string(),
+        "Backspace" => "Bksp".to_string(),
+        "CapsLock" => "Caps".to_string(),
+        "NumLock" => "Num".to_string(),
+        "ScrollLock" => "Scrl".to_string(),
+        "PrintScreen" => "PrtSc".to_string(),
+        _ => label.to_string(),
+    }
+}
+
+/// Compute keycap dimensions from config.
+fn keycap_dimensions(config: &OverlayConfig) -> (f64, f64, f64, f64) {
+    let font_size = config.text.size.unwrap_or(config.scale.font_size()) as f64;
+    let padding_x = config.scale.padding() as f64 * 1.5;
+    let padding_y = config.scale.padding() as f64;
+    let corner_radius = font_size * config.border.radius as f64;
+    (font_size, padding_x, padding_y, corner_radius)
+}
+
+fn compute_surface_size(combos: &[ShortcutCombo], config: &OverlayConfig) -> (i32, i32, usize) {
+    let (font_size, padding_x, padding_y, _corner_radius) = keycap_dimensions(config);
     let visible: Vec<&ShortcutCombo> = combos.iter().take(MAX_HISTORY_ROWS).collect();
     if visible.is_empty() {
         return (0, 0, 0);
@@ -841,17 +915,17 @@ fn compute_surface_size(combos: &[ShortcutCombo]) -> (i32, i32, usize) {
     let mut total_keycaps = 0usize;
 
     for combo in &visible {
-        let parts = combo_to_key_parts(combo);
+        let parts = combo_to_key_parts(combo, &config.text.variant);
         if parts.is_empty() {
             continue;
         }
         total_keycaps += parts.len();
 
-        let sep_w = measure_text_width("+");
+        let sep_w = measure_text_width("+", font_size);
         let is_seq = combo.is_sequence();
         let mut row_width = 0.0_f64;
         for (i, label) in parts.iter().enumerate() {
-            row_width += measure_text_width(label) + KEYCAP_PADDING_X * 2.0;
+            row_width += measure_text_width(label, font_size) + padding_x * 2.0;
             if i < parts.len() - 1 {
                 if is_seq {
                     row_width += KEYCAP_GAP;
@@ -867,35 +941,37 @@ fn compute_surface_size(combos: &[ShortcutCombo]) -> (i32, i32, usize) {
         return (0, 0, 0);
     }
 
-    let keycap_h = FONT_SIZE + KEYCAP_PADDING_Y * 2.0;
+    let keycap_h = font_size + padding_y * 2.0;
     let content_h = visible.len() as f64 * keycap_h
         + (visible.len().saturating_sub(1)) as f64 * ROW_GAP;
 
-    let surf_w = (max_row_width + SURFACE_MARGIN * 2.0).ceil() as i32;
-    let surf_h = (content_h + SURFACE_MARGIN * 2.0).ceil() as i32;
+    let margin_x = config.margin_x as f64;
+    let margin_y = config.margin_y as f64;
+    let surf_w = (max_row_width + margin_x * 2.0).ceil() as i32;
+    let surf_h = (content_h + margin_y * 2.0).ceil() as i32;
 
     (surf_w.max(1), surf_h.max(1), total_keycaps)
 }
 
-fn measure_text_width(label: &str) -> f64 {
+fn measure_text_width(label: &str, font_size: f64) -> f64 {
     let surface = match cairo::ImageSurface::create(cairo::Format::ARgb32, 1, 1) {
         Ok(s) => s,
-        Err(_) => return label.len() as f64 * FONT_SIZE * 0.6,
+        Err(_) => return label.len() as f64 * font_size * 0.6,
     };
     let cr = match cairo::Context::new(&surface) {
         Ok(c) => c,
-        Err(_) => return label.len() as f64 * FONT_SIZE * 0.6,
+        Err(_) => return label.len() as f64 * font_size * 0.6,
     };
     cr.select_font_face(
         "sans-serif",
         cairo::FontSlant::Normal,
         cairo::FontWeight::Bold,
     );
-    cr.set_font_size(FONT_SIZE);
+    cr.set_font_size(font_size);
     if let Ok(extents) = cr.text_extents(label) {
         extents.x_bearing() + extents.width()
     } else {
-        label.len() as f64 * FONT_SIZE * 0.6
+        label.len() as f64 * font_size * 0.6
     }
 }
 
@@ -932,9 +1008,22 @@ fn render_clear_frame(shm: &ShmBuffer) {
     shm.write_pixels(&data);
 }
 
-fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], opacity: f32, slide_offset: f32, scale: f32, offset_x: f64, position: OverlayPosition) {
+fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], config: &OverlayConfig, opacity: f32, slide_offset: f32, scale: f32, offset_x: f64, position: OverlayPosition) {
     let width = shm.width;
     let height = shm.height;
+
+    let (font_size, padding_x, padding_y, corner_radius) = keycap_dimensions(config);
+
+    // Parse config colors
+    let keycap_primary = parse_hex_color(&config.colors.keycap_primary);
+    let keycap_secondary = parse_hex_color(&config.colors.keycap_secondary);
+    let modifier_primary = parse_hex_color(&config.colors.modifier_primary);
+    let modifier_secondary = parse_hex_color(&config.colors.modifier_secondary);
+    let text_color = parse_hex_color(&config.text.color);
+    let modifier_text_color = parse_hex_color(&config.text.modifier_color);
+    let border_color = parse_hex_color(&config.border.color);
+    let modifier_border_color = parse_hex_color(&config.border.modifier_color);
+    let background_color = parse_hex_color(&config.background.color);
 
     let mut image_surface =
         match cairo::ImageSurface::create(cairo::Format::ARgb32, width, height) {
@@ -978,28 +1067,30 @@ fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], opacity: f32, slide
             cairo::FontSlant::Normal,
             cairo::FontWeight::Bold,
         );
-        cr.set_font_size(FONT_SIZE);
+        cr.set_font_size(font_size);
 
         // Compute content height for vertical positioning
-        let keycap_h = FONT_SIZE + KEYCAP_PADDING_Y * 2.0;
+        let keycap_h = font_size + padding_y * 2.0;
         let content_h = visible.len() as f64 * keycap_h
             + (visible.len().saturating_sub(1)) as f64 * ROW_GAP;
+
+        let margin_y = config.margin_y as f64;
 
         // Compute initial Y based on position
         let mut y = match position {
             OverlayPosition::BottomLeft | OverlayPosition::BottomRight | OverlayPosition::BottomCenter => {
-                (height as f64 - content_h - SURFACE_MARGIN + slide_y).max(0.0)
+                (height as f64 - content_h - margin_y + slide_y).max(0.0)
             }
             OverlayPosition::Center => {
                 ((height as f64 - content_h) / 2.0 + slide_y).max(0.0)
             }
             OverlayPosition::TopLeft | OverlayPosition::TopRight | OverlayPosition::TopCenter => {
-                SURFACE_MARGIN + slide_y
+                margin_y + slide_y
             }
         };
 
         for (row_idx, combo) in visible.iter().enumerate() {
-            let parts = combo_to_key_parts(combo);
+            let parts = combo_to_key_parts(combo, &config.text.variant);
             if parts.is_empty() {
                 continue;
             }
@@ -1009,77 +1100,140 @@ fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], opacity: f32, slide
             let row_opacity = opacity * (1.0 - row_idx as f32 * 0.15).max(0.3);
 
             for (i, label) in parts.iter().enumerate() {
-                let kw = measure_text_width(label) + KEYCAP_PADDING_X * 2.0;
+                let kw = measure_text_width(label, font_size) + padding_x * 2.0;
                 let is_modifier = is_modifier_label(label);
 
                 // Determine colors based on whether this is a modifier
-                let (bg_top_r, bg_top_g, bg_top_b, border_r, border_g, border_b, text_r, text_g, text_b) = if is_modifier {
+                let (bg_r, bg_g, bg_b, bg2_r, bg2_g, bg2_b, brd_r, brd_g, brd_b, txt_r, txt_g, txt_b) = if is_modifier && config.colors.highlight_modifiers {
                     (
-                        MODIFIER_BG_TOP.0, MODIFIER_BG_TOP.1, MODIFIER_BG_TOP.2,
-                        MODIFIER_BORDER.0, MODIFIER_BORDER.1, MODIFIER_BORDER.2,
-                        MODIFIER_TEXT.0, MODIFIER_TEXT.1, MODIFIER_TEXT.2,
+                        modifier_primary.0, modifier_primary.1, modifier_primary.2,
+                        modifier_secondary.0, modifier_secondary.1, modifier_secondary.2,
+                        modifier_border_color.0, modifier_border_color.1, modifier_border_color.2,
+                        modifier_text_color.0, modifier_text_color.1, modifier_text_color.2,
                     )
                 } else {
                     (
-                        KEYCAP_BG_TOP.0, KEYCAP_BG_TOP.1, KEYCAP_BG_TOP.2,
-                        KEYCAP_BORDER.0, KEYCAP_BORDER.1, KEYCAP_BORDER.2,
-                        TEXT_COLOR.0, TEXT_COLOR.1, TEXT_COLOR.2,
+                        keycap_primary.0, keycap_primary.1, keycap_primary.2,
+                        keycap_secondary.0, keycap_secondary.1, keycap_secondary.2,
+                        border_color.0, border_color.1, border_color.2,
+                        text_color.0, text_color.1, text_color.2,
                     )
                 };
 
-                // Draw shadow
+                // Draw shadow (unless minimal style)
+                if config.keycap_style != KeycapStyle::Minimal {
+                    let _ = cr.new_path();
+                    draw_rounded_rect(&cr, x + 2.0, y + 3.0, kw, keycap_h, corner_radius);
+                    let _ = cr.set_source_rgba(0.0, 0.0, 0.0, 0.4 * row_opacity as f64);
+                    let _ = cr.fill();
+                }
+
+                // Draw keycap background
                 let _ = cr.new_path();
-                draw_rounded_rect(&cr, x + 2.0, y + 3.0, kw, keycap_h, CORNER_RADIUS);
-                let _ = cr.set_source_rgba(
-                    SHADOW_COLOR.0, SHADOW_COLOR.1, SHADOW_COLOR.2,
-                    SHADOW_COLOR.3 * row_opacity as f64,
-                );
-                let _ = cr.fill();
+                draw_rounded_rect(&cr, x, y, kw, keycap_h, corner_radius);
 
-                // Draw keycap background gradient (top to bottom)
-                let _ = cr.new_path();
-                draw_rounded_rect(&cr, x, y, kw, keycap_h, CORNER_RADIUS);
+                match config.keycap_style {
+                    KeycapStyle::Minimal => {
+                        // Flat solid color, no gradient
+                        let _ = cr.set_source_rgba(
+                            bg_r, bg_g, bg_b,
+                            row_opacity as f64 * 0.9,
+                        );
+                        let _ = cr.fill();
+                    }
+                    KeycapStyle::LowProfile => {
+                        // Darker, flatter
+                        let (dark_r, dark_g, dark_b) = darken(bg_r, bg_g, bg_b, 0.2);
+                        let _ = cr.set_source_rgba(
+                            dark_r, dark_g, dark_b,
+                            row_opacity as f64 * 0.85,
+                        );
+                        let _ = cr.fill();
+                    }
+                    _ => {
+                        // Gradient background (Laptop, PBT)
+                        if config.colors.use_gradient {
+                            let pattern = cairo::LinearGradient::new(0.0, y, 0.0, y + keycap_h);
+                            pattern.add_color_stop_rgba(0.0, bg2_r, bg2_g, bg2_b, row_opacity as f64 * 0.95);
+                            pattern.add_color_stop_rgba(1.0, bg_r, bg_g, bg_b, row_opacity as f64 * 0.9);
+                            let _ = cr.set_source(&pattern);
+                        } else {
+                            let _ = cr.set_source_rgba(
+                                bg_r, bg_g, bg_b,
+                                row_opacity as f64 * 0.9,
+                            );
+                        }
+                        let _ = cr.fill_preserve();
+                    }
+                }
 
-                // Create gradient pattern for 3D effect
-                let pattern = cairo::LinearGradient::new(0.0, y, 0.0, y + keycap_h);
-                pattern.add_color_stop_rgba(0.0, bg_top_r, bg_top_g, bg_top_b, row_opacity as f64 * 0.95);
-                pattern.add_color_stop_rgba(1.0, KEYCAP_BG.0, KEYCAP_BG.1, KEYCAP_BG.2, row_opacity as f64 * 0.9);
-                let _ = cr.set_source(&pattern);
-                let _ = cr.fill_preserve();
+                // Draw border (unless minimal style)
+                if config.keycap_style != KeycapStyle::Minimal && config.border.enabled {
+                    let _ = cr.set_source_rgba(
+                        brd_r, brd_g, brd_b,
+                        row_opacity as f64 * 0.6,
+                    );
+                    cr.set_line_width(config.border.width as f64);
+                    let _ = cr.stroke();
+                }
 
-                // Draw border
-                let _ = cr.set_source_rgba(
-                    border_r, border_g, border_b,
-                    row_opacity as f64 * 0.6,
-                );
-                cr.set_line_width(1.0);
-                let _ = cr.stroke();
+                // Draw top highlight (subtle shine) - not for minimal/lowprofile
+                if matches!(config.keycap_style, KeycapStyle::Laptop | KeycapStyle::PBT) {
+                    let _ = cr.new_path();
+                    draw_rounded_rect(&cr, x + 1.0, y + 1.0, kw - 2.0, keycap_h * 0.4, corner_radius - 1.0);
+                    let highlight = cairo::LinearGradient::new(0.0, y, 0.0, y + keycap_h * 0.4);
+                    highlight.add_color_stop_rgba(0.0, 1.0, 1.0, 1.0, 0.08 * row_opacity as f64);
+                    highlight.add_color_stop_rgba(1.0, 1.0, 1.0, 1.0, 0.0);
+                    let _ = cr.set_source(&highlight);
+                    let _ = cr.fill();
+                }
 
-                // Draw top highlight (subtle shine)
-                let _ = cr.new_path();
-                draw_rounded_rect(&cr, x + 1.0, y + 1.0, kw - 2.0, keycap_h * 0.4, CORNER_RADIUS - 1.0);
-                let highlight = cairo::LinearGradient::new(0.0, y, 0.0, y + keycap_h * 0.4);
-                highlight.add_color_stop_rgba(0.0, 1.0, 1.0, 1.0, 0.08 * row_opacity as f64);
-                highlight.add_color_stop_rgba(1.0, 1.0, 1.0, 1.0, 0.0);
-                let _ = cr.set_source(&highlight);
-                let _ = cr.fill();
+                // Draw background fill (if enabled)
+                if config.background.enabled {
+                    let _ = cr.new_path();
+                    draw_rounded_rect(&cr, x, y, kw, keycap_h, corner_radius);
+                    let _ = cr.set_source_rgba(
+                        background_color.0, background_color.1, background_color.2,
+                        background_color.3 * row_opacity as f64,
+                    );
+                    let _ = cr.fill();
+                }
+
+                // Apply text capitalization
+                let display_label = match config.text.caps {
+                    TextCaps::Uppercase => label.to_uppercase(),
+                    TextCaps::Lowercase => label.to_lowercase(),
+                    TextCaps::Capitalize => {
+                        let mut chars = label.chars();
+                        match chars.next() {
+                            None => String::new(),
+                            Some(first) => {
+                                let upper: String = first.to_uppercase().collect();
+                                let rest: String = chars.collect();
+                                format!("{}{}", upper, rest)
+                            }
+                        }
+                    }
+                };
 
                 // Draw text label
-                if let Ok(extents) = cr.text_extents(label) {
+                if let Ok(extents) = cr.text_extents(&display_label) {
                     let visual_w = extents.x_bearing() + extents.width();
                     let text_x = x + (kw - visual_w) / 2.0 - extents.x_bearing();
                     let text_y =
                         y + (keycap_h - extents.height()) / 2.0 - extents.y_bearing();
 
-                    // Text shadow
-                    let _ = cr.set_source_rgba(0.0, 0.0, 0.0, 0.5 * row_opacity as f64);
-                    cr.move_to(text_x + 1.0, text_y + 1.0);
-                    let _ = cr.show_text(label);
+                    // Text shadow (not for minimal style)
+                    if config.keycap_style != KeycapStyle::Minimal {
+                        let _ = cr.set_source_rgba(0.0, 0.0, 0.0, 0.5 * row_opacity as f64);
+                        cr.move_to(text_x + 1.0, text_y + 1.0);
+                        let _ = cr.show_text(&display_label);
+                    }
 
                     // Main text
-                    let _ = cr.set_source_rgba(text_r, text_g, text_b, row_opacity as f64);
+                    let _ = cr.set_source_rgba(txt_r, txt_g, txt_b, row_opacity as f64);
                     cr.move_to(text_x, text_y);
-                    let _ = cr.show_text(label);
+                    let _ = cr.show_text(&display_label);
                 }
 
                 x += kw;
@@ -1095,15 +1249,13 @@ fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], opacity: f32, slide
                             let sep_y = y + (keycap_h - sep_ext.height()) / 2.0
                                 - sep_ext.y_bearing();
                             let _ = cr.set_source_rgba(
-                                SEP_COLOR.0,
-                                SEP_COLOR.1,
-                                SEP_COLOR.2,
+                                0.55, 0.55, 0.6,
                                 row_opacity as f64 * 0.8,
                             );
                             cr.move_to(sep_x, sep_y);
                             let _ = cr.show_text("+");
                         }
-                        x += measure_text_width("+") + KEYCAP_GAP;
+                        x += measure_text_width("+", font_size) + KEYCAP_GAP;
                     }
                 }
             }

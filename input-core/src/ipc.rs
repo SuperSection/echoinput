@@ -1,5 +1,8 @@
 use crate::events::{InputEvent, ShortcutCombo};
-use crate::overlay::{OverlayConfig, OverlayPosition, OverlayScale, Theme};
+use crate::overlay::{
+    AnimationType, BackgroundSettings, BorderSettings, ColorSettings, KeycapStyle, OverlayConfig,
+    OverlayPosition, OverlayScale, TextSettings, Theme,
+};
 use std::time::{Duration, SystemTime};
 use tokio::sync::broadcast;
 use tracing::trace;
@@ -53,6 +56,24 @@ pub enum SettingsUpdate {
     Scale(OverlayScale),
     /// Maximum number of history items.
     HistoryLength(usize),
+    /// Keycap visual style preset.
+    KeycapStyle(KeycapStyle),
+    /// Keycap color settings.
+    Colors(ColorSettings),
+    /// Text typography settings.
+    Text(TextSettings),
+    /// Border settings.
+    Border(BorderSettings),
+    /// Background fill settings.
+    Background(BackgroundSettings),
+    /// Animation type.
+    AnimationType(AnimationType),
+    /// Animation speed (0.05 - 1.0).
+    AnimationSpeed(f32),
+    /// Horizontal margin from screen edge.
+    MarginX(f32),
+    /// Vertical margin from screen edge.
+    MarginY(f32),
     /// Apply multiple settings at once.
     Batch(Vec<SettingsUpdate>),
 }
@@ -67,6 +88,15 @@ impl SettingsUpdate {
             Self::Opacity(o) => config.opacity = o.clamp(0.0, 1.0),
             Self::Scale(s) => config.scale = *s,
             Self::HistoryLength(n) => config.history_length = *n,
+            Self::KeycapStyle(s) => config.keycap_style = *s,
+            Self::Colors(c) => config.colors = c.clone(),
+            Self::Text(t) => config.text = t.clone(),
+            Self::Border(b) => config.border = b.clone(),
+            Self::Background(b) => config.background = b.clone(),
+            Self::AnimationType(a) => config.animation_type = *a,
+            Self::AnimationSpeed(s) => config.animation_speed = s.clamp(0.05, 1.0),
+            Self::MarginX(m) => config.margin_x = *m,
+            Self::MarginY(m) => config.margin_y = *m,
             Self::Batch(updates) => {
                 for update in updates {
                     update.apply(config);
@@ -298,6 +328,8 @@ mod tests {
 
     #[test]
     fn test_settings_update_apply() {
+        use crate::overlay::{ColorSettings, TextCaps, TextSettings, TextVariant};
+
         let mut config = OverlayConfig::default();
 
         SettingsUpdate::Theme(Theme::Light).apply(&mut config);
@@ -315,22 +347,71 @@ mod tests {
 
         SettingsUpdate::Opacity(-1.0).apply(&mut config);
         assert_eq!(config.opacity, 0.0);
+
+        // Test new variants
+        SettingsUpdate::KeycapStyle(crate::overlay::KeycapStyle::PBT).apply(&mut config);
+        assert_eq!(config.keycap_style, crate::overlay::KeycapStyle::PBT);
+
+        SettingsUpdate::AnimationType(crate::overlay::AnimationType::Fade).apply(&mut config);
+        assert_eq!(config.animation_type, crate::overlay::AnimationType::Fade);
+
+        SettingsUpdate::AnimationSpeed(0.8).apply(&mut config);
+        assert_eq!(config.animation_speed, 0.8);
+
+        // Clamp animation speed
+        SettingsUpdate::AnimationSpeed(2.0).apply(&mut config);
+        assert_eq!(config.animation_speed, 1.0);
+
+        SettingsUpdate::MarginX(32.0).apply(&mut config);
+        assert_eq!(config.margin_x, 32.0);
+
+        SettingsUpdate::MarginY(48.0).apply(&mut config);
+        assert_eq!(config.margin_y, 48.0);
+
+        let colors = ColorSettings {
+            keycap_primary: "#ff0000".into(),
+            keycap_secondary: "#cc0000".into(),
+            use_gradient: false,
+            highlight_modifiers: false,
+            modifier_primary: "#00ff00".into(),
+            modifier_secondary: "#00cc00".into(),
+        };
+        SettingsUpdate::Colors(colors.clone()).apply(&mut config);
+        assert_eq!(config.colors.keycap_primary, "#ff0000");
+        assert!(!config.colors.use_gradient);
+
+        let text = TextSettings {
+            size: Some(32.0),
+            color: "#ffffff".into(),
+            modifier_color: "#aaaaaa".into(),
+            caps: TextCaps::Lowercase,
+            variant: TextVariant::Short,
+        };
+        SettingsUpdate::Text(text).apply(&mut config);
+        assert_eq!(config.text.size, Some(32.0));
+        assert_eq!(config.text.caps, TextCaps::Lowercase);
     }
 
     #[test]
     fn test_settings_batch_apply() {
+        use crate::overlay::KeycapStyle;
+
         let mut config = OverlayConfig::default();
 
         let batch = SettingsUpdate::Batch(vec![
             SettingsUpdate::Theme(Theme::Light),
             SettingsUpdate::Opacity(0.7),
             SettingsUpdate::Position(crate::overlay::OverlayPosition::Center),
+            SettingsUpdate::KeycapStyle(KeycapStyle::Minimal),
+            SettingsUpdate::AnimationSpeed(0.3),
         ]);
 
         batch.apply(&mut config);
         assert_eq!(config.theme, Theme::Light);
         assert_eq!(config.opacity, 0.7);
         assert_eq!(config.position, crate::overlay::OverlayPosition::Center);
+        assert_eq!(config.keycap_style, KeycapStyle::Minimal);
+        assert_eq!(config.animation_speed, 0.3);
     }
 
     #[test]
