@@ -12,9 +12,10 @@ use tracing::{debug, error, info, trace, warn};
 
 use wayland_client::globals::{registry_queue_init, GlobalListContents};
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_registry, wl_seat, wl_shm,
-    wl_shm_pool, wl_surface,
+    wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_region, wl_registry, wl_seat,
+    wl_shm, wl_shm_pool, wl_surface,
 };
+
 use wayland_client::{delegate_noop, Connection, Dispatch, Proxy, QueueHandle, WEnum};
 use wayland_protocols_wlr::layer_shell::v1::client::{
     zwlr_layer_shell_v1, zwlr_layer_surface_v1,
@@ -28,6 +29,7 @@ const SURFACE_MARGIN: f64 = 16.0;
 const CORNER_RADIUS: f64 = 10.0;
 const FONT_SIZE: f64 = 26.0;
 const MAX_HISTORY_ROWS: usize = 5;
+const MAX_SEQUENCE_LENGTH: usize = 7;
 
 // Keyviz-inspired color palette
 const KEYCAP_BG: (f64, f64, f64) = (0.12, 0.12, 0.14);
@@ -248,6 +250,7 @@ struct AppState {
     configured: bool,
     configure_width: u32,
     configure_height: u32,
+    configure_serial: Option<u32>,
     xkb_context: Option<xkbcommon::xkb::Context>,
     xkb_keymap: Option<xkbcommon::xkb::Keymap>,
     xkb_state: Option<xkbcommon::xkb::State>,
@@ -266,6 +269,7 @@ impl AppState {
             configured: false,
             configure_width: 0,
             configure_height: 0,
+            configure_serial: None,
             xkb_context: Some(xkbcommon::xkb::Context::new(xkbcommon::xkb::CONTEXT_NO_FLAGS)),
             xkb_keymap: None,
             xkb_state: None,
@@ -452,6 +456,7 @@ fn run_wayland_event_loop(
             state.configured = false;
             state.configure_width = 0;
             state.configure_height = 0;
+            state.configure_serial = None;
             state.buffer_attached = false;
             state.buffer_a_ready = true;
             state.buffer_b_ready = true;
@@ -521,6 +526,10 @@ fn run_wayland_event_loop(
                                     if let Some(new_key) = combo.key {
                                         keys.push(new_key);
                                     }
+                                    // Cap sequence length — oldest keys vanish
+                                    while keys.len() > MAX_SEQUENCE_LENGTH {
+                                        keys.remove(0);
+                                    }
                                     let merged = ShortcutCombo::sequence(keys);
                                     current_combos[0] = merged;
                                     animation.show(config.opacity);
@@ -560,10 +569,20 @@ fn run_wayland_event_loop(
         if !state.configured {
             animation.tick();
         } else {
-            let _needs_redraw = animation.tick();
+            let needs_redraw = animation.tick();
             let opacity = animation.current_opacity();
 
+            // When animation finishes fading to Idle, clear the combo list
+            // so the next keypress starts fresh — no stale rows reappear.
+            if needs_redraw && animation.state() == crate::animation::AnimationState::Idle {
+                current_combos.clear();
+            }
+
             let has_content = !current_combos.is_empty() && animation.is_visible();
+
+            // After receiving a new Configure event, we MUST re-attach a buffer
+            // and commit to complete the Wayland layer-shell handshake.
+            let needs_configure_flush = state.configure_serial.is_some();
 
             if has_content {
                 if let (Some(ref s), Some(ref _ls)) = (&surface, &layer_surface) {
@@ -631,25 +650,71 @@ fn run_wayland_event_loop(
                                     break;
                                 }
                                 state.buffer_attached = true;
+                                state.configure_serial = None;
                                 *ready_flag = false;
                                 use_a = !use_a;
                             }
                         }
                     }
                 }
-            } else if !animation.is_visible() && animation.state() == crate::animation::AnimationState::Idle {
-                if state.buffer_attached {
-                    if let Some(ref s) = surface {
-                        s.attach(None, 0, 0);
-                        s.commit();
-                        if let Err(e) = conn.flush() {
-                            error!("Wayland flush failed after detach: {:?}", e);
-                            warn!("Wayland connection lost, exiting event loop");
-                            break;
+            } else if state.buffer_attached {
+                // No content to show (or animation faded to idle).
+                // Render a transparent frame to clear stale keycap pixels
+                // from the buffer.  We MUST keep the buffer attached —
+                // detaching it causes Hyprland to unconfigure the surface
+                // and crash on the next attach.
+                if let (Some(ref s), Some(ref _ls)) = (&surface, &layer_surface) {
+                    let (active_buf, active_id, ready_flag) = if use_a {
+                        (&mut buf_a, 0usize, &mut state.buffer_a_ready)
+                    } else {
+                        (&mut buf_b, 1usize, &mut state.buffer_b_ready)
+                    };
+
+                    let render_w = if state.configure_width > 0 {
+                        state.configure_width as i32
+                    } else {
+                        state.outputs.first().map(|o| o.width).unwrap_or(1920)
+                    };
+                    let render_h = if state.configure_height > 0 {
+                        state.configure_height as i32
+                    } else {
+                        state.outputs.first().map(|o| o.height).unwrap_or(1080)
+                    };
+
+                    let needs_realloc = match active_buf {
+                        Some(b) => render_w > b.width || render_h > b.height,
+                        None => true,
+                    };
+                    if needs_realloc && *ready_flag {
+                        *active_buf = None;
+                        match ShmBuffer::create(&wayland_globals, render_w, render_h, active_id, &qh) {
+                            Ok(new_buf) => {
+                                *active_buf = Some(new_buf);
+                            }
+                            Err(e) => {
+                                error!("Buffer allocation failed for clear frame: {:?}", e);
+                            }
                         }
                     }
-                    state.buffer_attached = false;
+
+                    if let Some(ref buf) = *active_buf {
+                        if *ready_flag {
+                            render_clear_frame(buf);
+                            s.attach(Some(&buf.buffer), 0, 0);
+                            s.damage_buffer(0, 0, buf.width, buf.height);
+                            s.commit();
+                            if let Err(e) = conn.flush() {
+                                error!("Wayland flush failed after clear: {:?}", e);
+                                break;
+                            }
+                            state.configure_serial = None;
+                            *ready_flag = false;
+                            use_a = !use_a;
+                        }
+                    }
                 }
+            } else if needs_configure_flush {
+                state.configure_serial = None;
             }
         }
 
@@ -716,6 +781,10 @@ fn create_layer_surface(
     layer_surface.set_keyboard_interactivity(
         zwlr_layer_surface_v1::KeyboardInteractivity::None,
     );
+
+    let empty_region = globals.compositor.create_region(qh, ());
+    surface.set_input_region(Some(&empty_region));
+    empty_region.destroy();
 
     let output_width = state.outputs.first().map(|o| o.width).filter(|&w| w > 0).unwrap_or(1920);
     let output_height = state.outputs.first().map(|o| o.height).filter(|&h| h > 0).unwrap_or(1080);
@@ -831,6 +900,39 @@ fn measure_text_width(label: &str) -> f64 {
     } else {
         label.len() as f64 * FONT_SIZE * 0.6
     }
+}
+
+fn render_clear_frame(shm: &ShmBuffer) {
+    let mut image_surface =
+        match cairo::ImageSurface::create(cairo::Format::ARgb32, shm.width, shm.height) {
+            Ok(s) => s,
+            Err(e) => {
+                error!("Cairo surface create failed for clear frame: {:?}", e);
+                return;
+            }
+        };
+    {
+        let cr = match cairo::Context::new(&image_surface) {
+            Ok(cr) => cr,
+            Err(e) => {
+                error!("Cairo context create failed for clear frame: {:?}", e);
+                return;
+            }
+        };
+        let _ = cr.set_operator(cairo::Operator::Clear);
+        let _ = cr.set_source_rgba(0.0, 0.0, 0.0, 0.0);
+        let _ = cr.paint();
+        let _ = cr.show_page();
+    }
+    image_surface.flush();
+    let data = match image_surface.data() {
+        Ok(d) => d,
+        Err(e) => {
+            error!("Failed to read Cairo surface data for clear frame: {:?}", e);
+            return;
+        }
+    };
+    shm.write_pixels(&data);
 }
 
 fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], opacity: f32, slide_offset: f32, scale: f32, offset_x: f64, position: OverlayPosition) {
@@ -1057,6 +1159,7 @@ delegate_noop!(AppState: ignore wl_compositor::WlCompositor);
 delegate_noop!(AppState: ignore wl_shm::WlShm);
 delegate_noop!(AppState: ignore wl_shm_pool::WlShmPool);
 delegate_noop!(AppState: ignore wl_surface::WlSurface);
+delegate_noop!(AppState: ignore wl_region::WlRegion);
 
 impl Dispatch<wl_buffer::WlBuffer, usize> for AppState {
     fn event(
@@ -1317,7 +1420,8 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for AppState {
                 state.configured = true;
                 state.configure_width = width;
                 state.configure_height = height;
-                debug!(width, height, "Layer surface configured");
+                state.configure_serial = Some(serial);
+                debug!(serial, width, height, "Layer surface configured");
             }
             _ => {}
         }
