@@ -90,6 +90,10 @@ pub struct ShortcutCombo {
     pub key: Option<VirtualKey>,
     /// Human-readable display string: "Ctrl + Shift + P"
     pub display: String,
+    /// Sequence of plain keystrokes (no modifiers), displayed horizontally.
+    /// When non-empty, this combo represents multiple sequential key presses.
+    #[serde(default)]
+    pub key_sequence: Vec<VirtualKey>,
 }
 
 impl ShortcutCombo {
@@ -100,7 +104,24 @@ impl ShortcutCombo {
             modifiers,
             key,
             display,
+            key_sequence: Vec::new(),
         }
+    }
+
+    /// Create a key sequence combo from multiple keys (no modifiers).
+    pub fn sequence(keys: Vec<VirtualKey>) -> Self {
+        let display: String = keys.iter().map(|k| k.label()).collect::<Vec<_>>().join(" ");
+        Self {
+            modifiers: ModifierState::default(),
+            key: keys.last().copied(),
+            display,
+            key_sequence: keys,
+        }
+    }
+
+    /// Returns true if this combo represents a plain keystroke sequence.
+    pub fn is_sequence(&self) -> bool {
+        !self.key_sequence.is_empty()
     }
 
     fn build_display(mods: &ModifierState, key: Option<&VirtualKey>) -> String {

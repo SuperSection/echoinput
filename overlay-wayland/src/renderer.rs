@@ -508,6 +508,26 @@ fn run_wayland_event_loop(
                 RendererCommand::Update(event) => match &event {
                     DisplayEvent::Shortcut(combo) => {
                         debug!("Renderer received shortcut: {}", combo.display);
+                        // Merge consecutive plain keystrokes into one row
+                        if combo.modifiers.is_empty() {
+                            if let Some(front) = current_combos.first() {
+                                if front.modifiers.is_empty() {
+                                    let mut keys = front.key_sequence.clone();
+                                    if keys.is_empty() {
+                                        if let Some(prev_key) = front.key {
+                                            keys.push(prev_key);
+                                        }
+                                    }
+                                    if let Some(new_key) = combo.key {
+                                        keys.push(new_key);
+                                    }
+                                    let merged = ShortcutCombo::sequence(keys);
+                                    current_combos[0] = merged;
+                                    animation.show(config.opacity);
+                                    continue;
+                                }
+                            }
+                        }
                         // Prepend new combo to history (most recent first)
                         current_combos.insert(0, combo.clone());
                         // Trim to configured history length
@@ -721,6 +741,12 @@ fn position_to_anchor(config: &OverlayConfig) -> zwlr_layer_surface_v1::Anchor {
 
 fn combo_to_key_parts(combo: &ShortcutCombo) -> Vec<String> {
     let mut parts = Vec::new();
+
+    // For key sequences, return all keys from the sequence
+    if combo.is_sequence() {
+        return combo.key_sequence.iter().map(|k| k.label()).collect();
+    }
+
     if combo.modifiers.ctrl {
         parts.push("Ctrl".to_string());
     }
@@ -756,11 +782,16 @@ fn compute_surface_size(combos: &[ShortcutCombo]) -> (i32, i32, usize) {
         total_keycaps += parts.len();
 
         let sep_w = measure_text_width("+");
+        let is_seq = combo.is_sequence();
         let mut row_width = 0.0_f64;
         for (i, label) in parts.iter().enumerate() {
             row_width += measure_text_width(label) + KEYCAP_PADDING_X * 2.0;
             if i < parts.len() - 1 {
-                row_width += sep_w + KEYCAP_GAP * 2.0;
+                if is_seq {
+                    row_width += KEYCAP_GAP;
+                } else {
+                    row_width += sep_w + KEYCAP_GAP * 2.0;
+                }
             }
         }
         max_row_width = max_row_width.max(row_width);
@@ -873,6 +904,7 @@ fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], opacity: f32, slide
             if parts.is_empty() {
                 continue;
             }
+            let is_seq = combo.is_sequence();
 
             let mut x = offset_x;
             let row_opacity = opacity * (1.0 - row_idx as f32 * 0.15).max(0.3);
@@ -953,23 +985,27 @@ fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], opacity: f32, slide
 
                 x += kw;
 
-                // Draw separator "+" between keys
+                // Draw separator between keys
                 if i < parts.len() - 1 {
-                    if let Ok(sep_ext) = cr.text_extents("+") {
-                        let sep_visual_w = sep_ext.x_bearing() + sep_ext.width();
-                        let sep_x = x + KEYCAP_GAP - sep_visual_w / 2.0;
-                        let sep_y = y + (keycap_h - sep_ext.height()) / 2.0
-                            - sep_ext.y_bearing();
-                        let _ = cr.set_source_rgba(
-                            SEP_COLOR.0,
-                            SEP_COLOR.1,
-                            SEP_COLOR.2,
-                            row_opacity as f64 * 0.8,
-                        );
-                        cr.move_to(sep_x, sep_y);
-                        let _ = cr.show_text("+");
+                    if is_seq {
+                        x += KEYCAP_GAP;
+                    } else {
+                        if let Ok(sep_ext) = cr.text_extents("+") {
+                            let sep_visual_w = sep_ext.x_bearing() + sep_ext.width();
+                            let sep_x = x + KEYCAP_GAP - sep_visual_w / 2.0;
+                            let sep_y = y + (keycap_h - sep_ext.height()) / 2.0
+                                - sep_ext.y_bearing();
+                            let _ = cr.set_source_rgba(
+                                SEP_COLOR.0,
+                                SEP_COLOR.1,
+                                SEP_COLOR.2,
+                                row_opacity as f64 * 0.8,
+                            );
+                            cr.move_to(sep_x, sep_y);
+                            let _ = cr.show_text("+");
+                        }
+                        x += measure_text_width("+") + KEYCAP_GAP;
                     }
-                    x += measure_text_width("+") + KEYCAP_GAP;
                 }
             }
 

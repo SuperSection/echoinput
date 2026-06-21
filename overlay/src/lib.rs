@@ -44,8 +44,35 @@ impl OverlayState {
 
     /// Show a new shortcut on the overlay.
     pub fn show_shortcut(&mut self, combo: ShortcutCombo) {
+        let merged_combo = if combo.modifiers.is_empty() {
+            // Plain keystroke: check if we can merge with the most recent entry
+            if let Some(front) = self.items.front() {
+                if front.combo.modifiers.is_empty() {
+                    // Merge into the existing sequence — remove the old entry
+                    let mut keys = front.combo.key_sequence.clone();
+                    if keys.is_empty() {
+                        // Previous was a single plain keystroke, start collecting
+                        if let Some(prev_key) = front.combo.key {
+                            keys.push(prev_key);
+                        }
+                    }
+                    if let Some(new_key) = combo.key {
+                        keys.push(new_key);
+                    }
+                    self.items.pop_front();
+                    ShortcutCombo::sequence(keys)
+                } else {
+                    combo
+                }
+            } else {
+                combo
+            }
+        } else {
+            combo
+        };
+
         self.items.push_front(DisplayedShortcut {
-            combo: combo.clone(),
+            combo: merged_combo.clone(),
             shown_at: Instant::now(),
         });
 
@@ -58,7 +85,7 @@ impl OverlayState {
         let event = if self.config.history_length > 1 {
             DisplayEvent::History(self.items.iter().map(|i| i.combo.clone()).collect())
         } else {
-            DisplayEvent::Shortcut(combo)
+            DisplayEvent::Shortcut(merged_combo)
         };
 
         let _ = self.tx.send(event);
