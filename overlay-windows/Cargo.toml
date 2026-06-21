@@ -1,6 +1,6 @@
 [package]
-name = "platform-windows"
-description = "Windows platform implementations for EchoInput"
+name = "overlay-windows"
+description = "Windows overlay renderer for EchoInput"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,5 +17,7 @@ crossbeam-channel = "0.5"
 windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_Dwm",
     "Win32_System_LibraryLoader",
 ] }

@@ -6,8 +6,12 @@ members = [
     "platform-macos",
     "overlay",
     "overlay-wayland",
+    "overlay-x11",
+    "overlay-windows",
+    "overlay-macos",
     "tauri-app",
     "wayland-app",
+    "app",
 ]
 resolver = "2"
 
