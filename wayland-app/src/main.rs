@@ -7,6 +7,8 @@ use input_core::processor::DefaultEventProcessor;
 use input_core::traits::{EventProcessor, KeyboardCaptureProvider, OverlayRenderer, ProcessorConfig};
 use overlay_wayland::WaylandRenderer;
 use platform_linux::evdev_capture::EvdevCapture;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast::error::RecvError;
 use tracing::{error, info, warn};
@@ -76,9 +78,10 @@ fn run_overlay(config: OverlayConfig) {
     let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
 
     let bus = MessageBus::new(4096);
+    let shutdown = Arc::new(AtomicBool::new(false));
 
     rt.block_on(async {
-        let mut renderer = WaylandRenderer::new(bus.clone());
+        let mut renderer = WaylandRenderer::with_shutdown(bus.clone(), shutdown.clone());
 
         if let Err(e) = renderer.start(config.clone()).await {
             error!("Failed to start overlay: {}", e);
@@ -87,16 +90,7 @@ fn run_overlay(config: OverlayConfig) {
         }
 
         // Start evdev keyboard capture
-        let mut capture = match EvdevCapture::new() {
-            Ok(c) => c,
-            Err(e) => {
-                error!("Failed to create evdev capture: {}", e);
-                eprintln!("Error: Failed to create evdev capture: {}", e);
-                eprintln!("Hint: Check permissions on /dev/input/event*");
-                eprintln!("      Try: sudo usermod -aG input $USER  (then relogin)");
-                return;
-            }
-        };
+        let mut capture = EvdevCapture::with_shutdown(shutdown.clone());
 
         let mut input_rx = capture.subscribe();
 
@@ -130,14 +124,18 @@ fn run_overlay(config: OverlayConfig) {
                             for pe in processed {
                                 match pe {
                                     ProcessedEvent::Shortcut(combo) => {
-                                        let _ = renderer.update(DisplayEvent::Shortcut(combo));
+                                        if let Err(e) = renderer.update(DisplayEvent::Shortcut(combo)) {
+                                            warn!("Failed to send shortcut to renderer: {}", e);
+                                        }
                                     }
                                     ProcessedEvent::RawKey(kbd) => {
                                         let combo = ShortcutCombo::new(
                                             ModifierState::default(),
                                             Some(kbd.key),
                                         );
-                                        let _ = renderer.update(DisplayEvent::Shortcut(combo));
+                                        if let Err(e) = renderer.update(DisplayEvent::Shortcut(combo)) {
+                                            warn!("Failed to send key to renderer: {}", e);
+                                        }
                                     }
                                     ProcessedEvent::ModifierChange(_) => {}
                                 }
@@ -155,8 +153,15 @@ fn run_overlay(config: OverlayConfig) {
                 }
                 _ = &mut ctrl_c => {
                     eprintln!("\nShutting down...");
+                    shutdown.store(true, Ordering::Relaxed);
                     break;
                 }
+            }
+
+            // Also check shutdown flag (set by evdev Ctrl+C detection in terminal)
+            if shutdown.load(Ordering::Relaxed) {
+                eprintln!("\nShutting down...");
+                break;
             }
         }
 

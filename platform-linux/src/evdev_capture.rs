@@ -1,8 +1,11 @@
 use anyhow::{Context, Result};
 use evdev::{Device, EventType, InputEvent as EvdevEvent, KeyCode};
 use input_core::events::{InputEvent, KeyState, KeyboardEvent};
+use input_core::keys::VirtualKey;
 use input_core::traits::{CaptureFeatures, KeyboardCaptureProvider};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, trace, warn};
 
@@ -13,6 +16,7 @@ pub struct EvdevCapture {
     tx: broadcast::Sender<InputEvent>,
     running: bool,
     task_handle: Option<tokio::task::JoinHandle<()>>,
+    shutdown: Arc<AtomicBool>,
 }
 
 impl EvdevCapture {
@@ -23,6 +27,7 @@ impl EvdevCapture {
             tx,
             running: false,
             task_handle: None,
+            shutdown: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -32,7 +37,23 @@ impl EvdevCapture {
             tx,
             running: false,
             task_handle: None,
+            shutdown: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    pub fn with_shutdown(shutdown: Arc<AtomicBool>) -> Self {
+        let (tx, _) = broadcast::channel(1024);
+        Self {
+            device_paths: Vec::new(),
+            tx,
+            running: false,
+            task_handle: None,
+            shutdown,
+        }
+    }
+
+    pub fn shutdown_flag(&self) -> Arc<AtomicBool> {
+        self.shutdown.clone()
     }
 
     pub fn from_device(path: &Path) -> Result<Self> {
@@ -48,6 +69,7 @@ impl EvdevCapture {
             tx,
             running: false,
             task_handle: None,
+            shutdown: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -66,6 +88,7 @@ impl EvdevCapture {
             tx,
             running: false,
             task_handle: None,
+            shutdown: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -147,8 +170,9 @@ impl EvdevCapture {
             "Spawning capture thread"
         );
 
+        let shutdown = self.shutdown.clone();
         let handle = tokio::task::spawn_blocking(move || {
-            Self::capture_loop(paths, tx);
+            Self::capture_loop(paths, tx, shutdown);
         });
 
         self.task_handle = Some(handle);
@@ -156,7 +180,11 @@ impl EvdevCapture {
     }
 
     /// Blocking capture loop - runs on a dedicated thread.
-    fn capture_loop(paths: Vec<PathBuf>, tx: broadcast::Sender<InputEvent>) {
+    fn capture_loop(
+        paths: Vec<PathBuf>,
+        tx: broadcast::Sender<InputEvent>,
+        shutdown: Arc<AtomicBool>,
+    ) {
         debug!(thread_id = ?std::thread::current().id(), "Capture thread spawned");
 
         let mut devices: Vec<(PathBuf, Device)> = Vec::new();
@@ -188,7 +216,17 @@ impl EvdevCapture {
         info!(devices = devices.len(), "Capture loop started");
         eprintln!("DEBUG: Capture loop started with {} device(s)", devices.len());
 
+        let in_terminal = unsafe { libc::isatty(libc::STDIN_FILENO) != 0 };
+
+        // Track modifier state for Ctrl+C detection
+        let mut ctrl_held = false;
+
         loop {
+            if shutdown.load(Ordering::Relaxed) {
+                debug!("Shutdown flag set — capture loop exiting");
+                break;
+            }
+
             let mut had_events = false;
 
             for (path, device) in &mut devices {
@@ -210,6 +248,19 @@ impl EvdevCapture {
                                 key = ?key_name,
                                 "evdev event"
                             );
+
+                            // Track Ctrl state for Ctrl+C detection
+                            match key_name {
+                                VirtualKey::ControlLeft | VirtualKey::ControlRight => {
+                                    ctrl_held = value == 1;
+                                }
+                                VirtualKey::C if ctrl_held && value == 1 && in_terminal => {
+                                    info!("Ctrl+C detected in terminal — triggering shutdown");
+                                    shutdown.store(true, Ordering::Relaxed);
+                                    break;
+                                }
+                                _ => {}
+                            }
 
                             if let Err(e) = Self::process_evdev_event(&ev, &tx) {
                                 warn!(
@@ -233,12 +284,18 @@ impl EvdevCapture {
                 }
             }
 
+            if shutdown.load(Ordering::Relaxed) {
+                break;
+            }
+
             if had_events {
-                std::thread::sleep(std::time::Duration::from_micros(100));
+                std::thread::sleep(std::time::Duration::from_micros(50));
             } else {
-                std::thread::sleep(std::time::Duration::from_millis(5));
+                std::thread::sleep(std::time::Duration::from_millis(2));
             }
         }
+
+        info!("Capture loop ended");
     }
 
     fn process_evdev_event(

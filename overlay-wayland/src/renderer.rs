@@ -4,9 +4,11 @@ use input_core::events::ShortcutCombo;
 use input_core::ipc::MessageBus;
 use input_core::overlay::{DisplayEvent, OverlayConfig, OverlayPosition};
 use std::os::unix::io::{AsFd, AsRawFd};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use wayland_client::globals::{registry_queue_init, GlobalListContents};
 use wayland_client::protocol::{
@@ -69,6 +71,16 @@ struct ShmBuffer {
     height: i32,
 }
 
+impl Drop for ShmBuffer {
+    fn drop(&mut self) {
+        unsafe {
+            libc::munmap(self.mmap_ptr as *mut libc::c_void, self.mmap_len);
+        }
+        self.buffer.destroy();
+        self.pool.destroy();
+    }
+}
+
 unsafe impl Send for ShmBuffer {}
 unsafe impl Sync for ShmBuffer {}
 
@@ -77,6 +89,7 @@ impl ShmBuffer {
         globals: &WaylandGlobals,
         width: i32,
         height: i32,
+        buffer_id: usize,
         qh: &QueueHandle<AppState>,
     ) -> Result<Self, WaylandError> {
         let stride = width * 4;
@@ -120,7 +133,7 @@ impl ShmBuffer {
             stride,
             wl_shm::Format::Argb8888,
             qh,
-            (),
+            buffer_id,
         );
 
         let _ = std::fs::remove_file(&file_path);
@@ -144,16 +157,6 @@ impl ShmBuffer {
     }
 }
 
-impl Drop for ShmBuffer {
-    fn drop(&mut self) {
-        unsafe {
-            libc::munmap(self.mmap_ptr as *mut libc::c_void, self.mmap_len);
-        }
-        self.buffer.destroy();
-        self.pool.destroy();
-    }
-}
-
 fn rand_id() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
@@ -166,6 +169,7 @@ pub struct WaylandRenderer {
     bus: Option<MessageBus>,
     cmd_tx: Option<mpsc::UnboundedSender<RendererCommand>>,
     handle: Option<tokio::task::JoinHandle<()>>,
+    shutdown: Option<Arc<AtomicBool>>,
 }
 
 impl WaylandRenderer {
@@ -174,6 +178,16 @@ impl WaylandRenderer {
             bus: Some(bus),
             cmd_tx: None,
             handle: None,
+            shutdown: None,
+        }
+    }
+
+    pub fn with_shutdown(bus: MessageBus, shutdown: Arc<AtomicBool>) -> Self {
+        Self {
+            bus: Some(bus),
+            cmd_tx: None,
+            handle: None,
+            shutdown: Some(shutdown),
         }
     }
 }
@@ -187,8 +201,10 @@ impl input_core::traits::OverlayRenderer for WaylandRenderer {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         self.cmd_tx = Some(cmd_tx);
 
+        let shutdown = self.shutdown.take().unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
+
         let handle = tokio::task::spawn_blocking(move || {
-            if let Err(e) = run_wayland_event_loop(bus, config, cmd_rx) {
+            if let Err(e) = run_wayland_event_loop(bus, config, cmd_rx, shutdown) {
                 error!("Wayland event loop error: {}", e);
             }
         });
@@ -235,6 +251,11 @@ struct AppState {
     xkb_context: Option<xkbcommon::xkb::Context>,
     xkb_keymap: Option<xkbcommon::xkb::Keymap>,
     xkb_state: Option<xkbcommon::xkb::State>,
+    _keyboard: Option<wl_keyboard::WlKeyboard>,
+    buffer_attached: bool,
+    buffer_a_ready: bool,
+    buffer_b_ready: bool,
+    surface_closed: bool,
 }
 
 impl AppState {
@@ -248,6 +269,11 @@ impl AppState {
             xkb_context: Some(xkbcommon::xkb::Context::new(xkbcommon::xkb::CONTEXT_NO_FLAGS)),
             xkb_keymap: None,
             xkb_state: None,
+            _keyboard: None,
+            buffer_attached: false,
+            buffer_a_ready: true,
+            buffer_b_ready: true,
+            surface_closed: false,
         }
     }
 
@@ -272,6 +298,7 @@ fn run_wayland_event_loop(
     _bus: MessageBus,
     initial_config: OverlayConfig,
     mut cmd_rx: mpsc::UnboundedReceiver<RendererCommand>,
+    shutdown: Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
     let conn = Connection::connect_to_env()
         .map_err(|e| WaylandError::Connection(e.to_string()))?;
@@ -280,8 +307,6 @@ fn run_wayland_event_loop(
         .map_err(|e| WaylandError::Connection(format!("registry_queue_init: {}", e)))?;
 
     let qh = event_queue.handle();
-
-    let all_globals = globals.contents().clone_list();
 
     let compositor: wl_compositor::WlCompositor = globals
         .bind(&qh, 4..=5, ())
@@ -303,12 +328,12 @@ fn run_wayland_event_loop(
 
     let mut state = AppState::new();
 
-    let registry = globals.registry();
+    let all_globals = globals.contents().clone_list();
     for g in &all_globals {
         match g.interface.as_str() {
             "wl_output" => {
                 let version = g.version.min(4);
-                let proxy: wl_output::WlOutput = registry.bind(g.name, version, &qh, ());
+                let proxy: wl_output::WlOutput = globals.registry().bind(g.name, version, &qh, ());
                 let proxy_id = proxy.id().protocol_id();
                 state.outputs.push(OutputInfo {
                     name: String::new(),
@@ -321,7 +346,7 @@ fn run_wayland_event_loop(
                 state.output_proxies.push(proxy);
             }
             "wl_seat" => {
-                let _seat: wl_seat::WlSeat = registry.bind(g.name, g.version.min(7), &qh, ());
+                let _seat: wl_seat::WlSeat = globals.registry().bind(g.name, g.version.min(7), &qh, ());
                 debug!("Bound wl_seat global");
             }
             _ => {}
@@ -329,6 +354,7 @@ fn run_wayland_event_loop(
     }
 
     // First roundtrip: discovers outputs, binds seat, creates wl_keyboard
+    // Registry::Global events are dispatched here, binding wl_output and wl_seat
     event_queue
         .roundtrip(&mut state)
         .map_err(|e| WaylandError::Connection(format!("roundtrip failed: {}", e)))?;
@@ -358,7 +384,9 @@ fn run_wayland_event_loop(
 
     let mut config = initial_config.clone();
     let mut animation = Animation::new(&config);
-    let mut shm_buf: Option<ShmBuffer> = None;
+    let mut buf_a: Option<ShmBuffer> = None;
+    let mut buf_b: Option<ShmBuffer> = None;
+    let mut use_a = true;
     let mut layer_surface: Option<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1> = None;
     let mut surface: Option<wl_surface::WlSurface> = None;
     let mut current_combos: Vec<ShortcutCombo> = Vec::new();
@@ -370,6 +398,9 @@ fn run_wayland_event_loop(
                 eprintln!("DEBUG: Layer surface created successfully");
                 surface = Some(s);
                 layer_surface = Some(ls);
+                if let Err(e) = conn.flush() {
+                    warn!("Failed to flush after layer surface creation: {}", e);
+                }
             }
             Err(e) => {
                 warn!("Failed to create layer surface: {}", e);
@@ -379,39 +410,91 @@ fn run_wayland_event_loop(
         warn!("No outputs available");
     }
 
-    let raw_fd = conn.backend().poll_fd().as_raw_fd();
-
     info!("EchoInput running — press keys to see overlay");
 
     let mut configure_received = state.configured;
+    let mut configure_logged = false;
     let start_time = std::time::Instant::now();
 
     loop {
-        {
-            let mut pollfd = libc::pollfd {
-                fd: raw_fd,
-                events: libc::POLLIN,
-                revents: 0,
-            };
-            let _ = unsafe { libc::poll(&mut pollfd, 1, 5) };
-        if pollfd.revents & libc::POLLIN != 0 {
-            if let Some(guard) = event_queue.prepare_read() {
-                if let Err(e) = guard.read() {
-                    eprintln!("DEBUG: guard.read() failed: {:?}", e);
+        if shutdown.load(Ordering::Relaxed) {
+            debug!("Shutdown flag set — Wayland event loop exiting");
+            break;
+        }
+
+        if let Err(e) = event_queue.dispatch_pending(&mut state) {
+            error!("Event queue dispatch_pending error: {:?}", e);
+            // Wayland protocol error — connection is broken, exit cleanly
+            warn!("Wayland connection lost, exiting event loop");
+            break;
+        }
+
+        if let Some(guard) = event_queue.prepare_read() {
+            match guard.read() {
+                Ok(_) => {}
+                Err(wayland_client::backend::WaylandError::Io(ref e))
+                    if e.kind() == std::io::ErrorKind::WouldBlock => {}
+                Err(e) => {
+                    error!("Wayland event read failed: {:?}", e);
+                    break;
                 }
             }
         }
-    }
-    if let Err(e) = event_queue.dispatch_pending(&mut state) {
-        eprintln!("DEBUG: dispatch_pending failed: {:?}", e);
-    }
 
-    if !state.configured && start_time.elapsed() > std::time::Duration::from_secs(5) && !configure_received {
-        configure_received = true;
-        warn!("No configure received after 5s — compositor may not support layer shell");
-    }
+        if let Err(e) = event_queue.dispatch_pending(&mut state) {
+            error!("Event queue dispatch_pending error (second pass): {:?}", e);
+            warn!("Wayland connection lost on second dispatch, exiting event loop");
+            break;
+        }
 
-        if !configure_received && state.configured {
+        if state.surface_closed {
+            state.surface_closed = false;
+            state.configured = false;
+            state.configure_width = 0;
+            state.configure_height = 0;
+            state.buffer_attached = false;
+            state.buffer_a_ready = true;
+            state.buffer_b_ready = true;
+            buf_a = None;
+            buf_b = None;
+            use_a = true;
+
+            if let Some(s) = surface.take() {
+                s.destroy();
+            }
+            if let Some(ls) = layer_surface.take() {
+                ls.destroy();
+            }
+
+            match create_layer_surface(&wayland_globals, &config, &state, &qh) {
+                Ok((s, ls, _scale)) => {
+                    info!("Layer surface recreated successfully");
+                    surface = Some(s);
+                    layer_surface = Some(ls);
+                    if let Err(e) = conn.flush() {
+                        warn!("Failed to flush after surface recreation: {}", e);
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to recreate layer surface: {}", e);
+                }
+            }
+        }
+
+        if !state.configured && start_time.elapsed() > std::time::Duration::from_secs(5) && !configure_received {
+            configure_received = true;
+            warn!("No configure received after 5s — forcing configured state");
+            state.configured = true;
+            if state.configure_width == 0 {
+                state.configure_width = state.outputs.first().map(|o| o.width as u32).unwrap_or(1920);
+            }
+            if state.configure_height == 0 {
+                state.configure_height = state.outputs.first().map(|o| o.height as u32).unwrap_or(1080);
+            }
+        }
+
+        if !configure_logged && state.configured {
+            configure_logged = true;
             configure_received = true;
             info!("Compositor configure received — overlay ready (w={} h={})",
                 state.configure_width, state.configure_height);
@@ -424,9 +507,13 @@ fn run_wayland_event_loop(
             match cmd {
                 RendererCommand::Update(event) => match &event {
                     DisplayEvent::Shortcut(combo) => {
-                        eprintln!("DEBUG: Renderer received shortcut: {}", combo.display);
-                        current_combos.clear();
-                        current_combos.push(combo.clone());
+                        debug!("Renderer received shortcut: {}", combo.display);
+                        // Prepend new combo to history (most recent first)
+                        current_combos.insert(0, combo.clone());
+                        // Trim to configured history length
+                        while current_combos.len() > config.history_length {
+                            current_combos.pop();
+                        }
                         animation.show(config.opacity);
                     }
                     DisplayEvent::History(combos) => {
@@ -463,12 +550,7 @@ fn run_wayland_event_loop(
                     let (content_w, content_h, _keycap_count) =
                         compute_surface_size(&current_combos);
 
-
-
-                    if content_w == 0 || content_h == 0 {
-                        s.attach(None, 0, 0);
-                        s.commit();
-                    } else {
+                    if content_w > 0 && content_h > 0 {
                         let render_w = if state.configure_width > 0 {
                             state.configure_width as i32
                         } else {
@@ -480,19 +562,21 @@ fn run_wayland_event_loop(
                             state.outputs.first().map(|o| o.height).unwrap_or(1080)
                         };
 
-                        let needs_realloc = match &shm_buf {
+                        let (active_buf, active_id, ready_flag) = if use_a {
+                            (&mut buf_a, 0usize, &mut state.buffer_a_ready)
+                        } else {
+                            (&mut buf_b, 1usize, &mut state.buffer_b_ready)
+                        };
+
+                        let needs_realloc = match active_buf {
                             Some(b) => render_w > b.width || render_h > b.height,
                             None => true,
                         };
-                        if needs_realloc {
-                            if let Some(old_buf) = shm_buf.take() {
-                                s.attach(None, 0, 0);
-                                s.commit();
-                                drop(old_buf);
-                            }
-                            match ShmBuffer::create(&wayland_globals, render_w, render_h, &qh) {
+                        if needs_realloc && *ready_flag {
+                            *active_buf = None;
+                            match ShmBuffer::create(&wayland_globals, render_w, render_h, active_id, &qh) {
                                 Ok(new_buf) => {
-                                    shm_buf = Some(new_buf);
+                                    *active_buf = Some(new_buf);
                                 }
                                 Err(e) => {
                                     error!("Buffer allocation failed: {:?}", e);
@@ -500,44 +584,59 @@ fn run_wayland_event_loop(
                             }
                         }
 
-                        if let Some(ref buf) = shm_buf {
-                            let offset_x = match config.position {
-                                OverlayPosition::TopLeft | OverlayPosition::BottomLeft => SURFACE_MARGIN,
-                                OverlayPosition::TopRight | OverlayPosition::BottomRight => {
-                                    (buf.width as f64 - content_w as f64 - SURFACE_MARGIN).max(0.0)
+                        if let Some(ref buf) = *active_buf {
+                            if *ready_flag {
+                                let offset_x = match config.position {
+                                    OverlayPosition::TopLeft | OverlayPosition::BottomLeft => SURFACE_MARGIN,
+                                    OverlayPosition::TopRight | OverlayPosition::BottomRight => {
+                                        (buf.width as f64 - content_w as f64 - SURFACE_MARGIN).max(0.0)
+                                    }
+                                    _ => ((buf.width - content_w) / 2).max(0) as f64,
+                                };
+                                render_keycaps(
+                                    buf,
+                                    &current_combos,
+                                    opacity,
+                                    animation.slide_offset(),
+                                    animation.scale(),
+                                    offset_x,
+                                    config.position,
+                                );
+                                s.attach(Some(&buf.buffer), 0, 0);
+                                s.damage_buffer(0, 0, buf.width, buf.height);
+                                s.commit();
+                                if let Err(e) = conn.flush() {
+                                    error!("Wayland flush failed after render: {:?}", e);
+                                    warn!("Wayland connection lost, exiting event loop");
+                                    break;
                                 }
-                                _ => ((buf.width - content_w) / 2).max(0) as f64,
-                            };
-                            render_keycaps(
-                                buf,
-                                &current_combos,
-                                opacity,
-                                animation.slide_offset(),
-                                animation.scale(),
-                                offset_x,
-                                config.position,
-                            );
-                            s.attach(Some(&buf.buffer), 0, 0);
-                            s.damage_buffer(0, 0, buf.width, buf.height);
-                            s.commit();
+                                state.buffer_attached = true;
+                                *ready_flag = false;
+                                use_a = !use_a;
+                            }
                         }
                     }
                 }
             } else if !animation.is_visible() && animation.state() == crate::animation::AnimationState::Idle {
-                if let Some(ref s) = surface {
-                    if shm_buf.is_some() {
+                if state.buffer_attached {
+                    if let Some(ref s) = surface {
                         s.attach(None, 0, 0);
                         s.commit();
-                        shm_buf = None;
+                        if let Err(e) = conn.flush() {
+                            error!("Wayland flush failed after detach: {:?}", e);
+                            warn!("Wayland connection lost, exiting event loop");
+                            break;
+                        }
                     }
+                    state.buffer_attached = false;
                 }
             }
         }
 
         if animation.is_visible() {
-            std::thread::sleep(Duration::from_millis(16));
+            std::thread::sleep(Duration::from_millis(8));
         } else {
-            std::thread::sleep(Duration::from_millis(50));
+            std::thread::sleep(Duration::from_millis(16));
         }
     }
 
@@ -598,8 +697,8 @@ fn create_layer_surface(
         zwlr_layer_surface_v1::KeyboardInteractivity::None,
     );
 
-    let output_width = state.outputs.first().map(|o| o.width).unwrap_or(1920);
-    let output_height = state.outputs.first().map(|o| o.height).unwrap_or(1080);
+    let output_width = state.outputs.first().map(|o| o.width).filter(|&w| w > 0).unwrap_or(1920);
+    let output_height = state.outputs.first().map(|o| o.height).filter(|&h| h > 0).unwrap_or(1080);
     layer_surface.set_size(output_width as u32, output_height as u32);
 
     surface.commit();
@@ -775,7 +874,7 @@ fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], opacity: f32, slide
                 continue;
             }
 
-            let mut x = SURFACE_MARGIN + offset_x;
+            let mut x = offset_x;
             let row_opacity = opacity * (1.0 - row_idx as f32 * 0.15).max(0.3);
 
             for (i, label) in parts.iter().enumerate() {
@@ -921,8 +1020,30 @@ fn draw_rounded_rect(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, r: f64
 delegate_noop!(AppState: ignore wl_compositor::WlCompositor);
 delegate_noop!(AppState: ignore wl_shm::WlShm);
 delegate_noop!(AppState: ignore wl_shm_pool::WlShmPool);
-delegate_noop!(AppState: ignore wl_buffer::WlBuffer);
 delegate_noop!(AppState: ignore wl_surface::WlSurface);
+
+impl Dispatch<wl_buffer::WlBuffer, usize> for AppState {
+    fn event(
+        state: &mut Self,
+        _buffer: &wl_buffer::WlBuffer,
+        event: wl_buffer::Event,
+        id: &usize,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            wl_buffer::Event::Release => {
+                if *id == 0 {
+                    state.buffer_a_ready = true;
+                } else {
+                    state.buffer_b_ready = true;
+                }
+                trace!(buffer_id = *id, "wl_buffer released");
+            }
+            _ => {}
+        }
+    }
+}
 
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for AppState {
     fn event(
@@ -975,7 +1096,7 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for AppState {
 
 impl Dispatch<wl_seat::WlSeat, ()> for AppState {
     fn event(
-        _state: &mut Self,
+        state: &mut Self,
         seat: &wl_seat::WlSeat,
         event: wl_seat::Event,
         _: &(),
@@ -987,7 +1108,7 @@ impl Dispatch<wl_seat::WlSeat, ()> for AppState {
         } = event
         {
             if capabilities.contains(wl_seat::Capability::Keyboard) {
-                let _keyboard = seat.get_keyboard(qh, ());
+                state._keyboard = Some(seat.get_keyboard(qh, ()));
                 debug!("Got wl_keyboard from seat");
             }
         }
@@ -1148,7 +1269,8 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for AppState {
     ) {
         match event {
             zwlr_layer_surface_v1::Event::Closed => {
-                warn!("Layer surface closed by compositor")
+                warn!("Layer surface closed by compositor — will recreate");
+                state.surface_closed = true;
             }
             zwlr_layer_surface_v1::Event::Configure {
                 serial,
