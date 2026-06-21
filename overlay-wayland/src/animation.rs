@@ -58,6 +58,31 @@ impl Animation {
         self.dirty = true;
     }
 
+    /// Keep the overlay visible without restarting the slide animation.
+    /// Used when appending keystrokes to an already-visible row.
+    pub fn refresh(&mut self) {
+        match self.state {
+            AnimationState::Idle => {
+                // Was idle, need a full show
+                self.state = AnimationState::Sliding;
+                self.slide_start = Instant::now();
+                self.slide_offset = 20.0;
+                self.scale = 0.8;
+            }
+            AnimationState::Fading => {
+                // Was fading, bring back to full visible
+                self.state = AnimationState::Visible;
+                self.current_opacity = self.target_opacity;
+            }
+            AnimationState::Sliding | AnimationState::Visible => {
+                // Already visible, just keep it that way
+                self.state = AnimationState::Visible;
+            }
+        }
+        self.shown_at = Instant::now();
+        self.dirty = true;
+    }
+
     pub fn update_config(&mut self, config: &OverlayConfig) {
         self.display_duration = config.display_duration;
         self.target_opacity = config.opacity;

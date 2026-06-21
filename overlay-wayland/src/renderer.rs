@@ -532,17 +532,14 @@ fn run_wayland_event_loop(
                                     }
                                     let merged = ShortcutCombo::sequence(keys);
                                     current_combos[0] = merged;
-                                    animation.show(config.opacity);
+                                    animation.refresh();
                                     continue;
                                 }
                             }
                         }
-                        // Prepend new combo to history (most recent first)
-                        current_combos.insert(0, combo.clone());
-                        // Trim to configured history length
-                        while current_combos.len() > config.history_length {
-                            current_combos.pop();
-                        }
+                        // New modifier combo — clear old rows, show this one
+                        current_combos.clear();
+                        current_combos.push(combo.clone());
                         animation.show(config.opacity);
                     }
                     DisplayEvent::History(combos) => {
