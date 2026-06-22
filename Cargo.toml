@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "input-core",
+    "platform",
     "platform-linux",
     "platform-windows",
     "platform-macos",
@@ -9,9 +10,8 @@ members = [
     "overlay-x11",
     "overlay-windows",
     "overlay-macos",
-    "tauri-app",
-    "wayland-app",
-    "app",
+    "settings",
+    "echoinput",
 ]
 resolver = "2"
 

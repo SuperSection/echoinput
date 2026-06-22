@@ -2,7 +2,8 @@ pub mod keymap;
 
 use anyhow::Result;
 use input_core::events::InputEvent;
-use input_core::traits::{CaptureFeatures, KeyboardCaptureProvider};
+use input_core::keys::VirtualKey;
+use platform::capture::{CaptureFeatures, KeyboardCaptureProvider, KeyboardCaptureFactory};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -52,7 +53,7 @@ impl KeyboardCaptureProvider for MacosCapture {
             return Ok(());
         }
 
-        let _tx = self.tx.clone();
+        let tx = self.tx.clone();
         let running = self.running.clone();
         let shutdown = self.shutdown.clone();
 
@@ -124,6 +125,8 @@ fn run_macos_event_tap(
     use core_foundation::string::CFString;
     use std::ffi::c_void;
     use std::sync::mpsc;
+    use input_core::events::{KeyboardEvent, KeyState};
+    use std::time::SystemTime;
 
     // Channel for the event tap callback to send events back
     let (event_tx, event_rx) = mpsc::channel::<(u32, bool)>();
@@ -244,5 +247,49 @@ impl Drop for MacosCapture {
         if let Some(handle) = self.handle.take() {
             let _ = handle.thread.join();
         }
+    }
+}
+
+/// Factory for creating macOS keyboard capture providers.
+pub struct MacosCaptureFactory;
+
+impl MacosCaptureFactory {
+    pub fn new() -> Self { Self }
+}
+
+impl Default for MacosCaptureFactory {
+    fn default() -> Self { Self::new() }
+}
+
+impl KeyboardCaptureFactory for MacosCaptureFactory {
+    fn create(&self) -> Box<dyn platform::capture::KeyboardCaptureProvider> {
+        Box::new(MacosCapture::new().expect("Failed to create MacosCapture"))
+    }
+
+    fn platform_name(&self) -> &str {
+        "macos-cgevent-tap"
+    }
+}
+
+/// Factory for creating macOS overlay renderer.
+pub struct MacRendererFactory {
+    inner: overlay_macos::MacRendererFactory,
+}
+
+impl MacRendererFactory {
+    pub fn new() -> Self { Self { inner: overlay_macos::MacRendererFactory::new() } }
+}
+
+impl Default for MacRendererFactory {
+    fn default() -> Self { Self::new() }
+}
+
+impl platform::overlay::OverlayRendererFactory for MacRendererFactory {
+    fn create(&self, bus: input_core::ipc::MessageBus) -> Box<dyn platform::overlay::OverlayRenderer> {
+        self.inner.create(bus)
+    }
+
+    fn platform_name(&self) -> &str {
+        "macos"
     }
 }

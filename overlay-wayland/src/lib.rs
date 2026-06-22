@@ -6,7 +6,7 @@ pub mod renderer;
 pub use renderer::WaylandRenderer;
 
 use input_core::ipc::MessageBus;
-use input_core::traits::{OverlayRenderer, OverlayRendererFactory};
+use platform::overlay::OverlayRendererFactory;
 
 /// Factory for creating Wayland overlay renderers.
 pub struct WaylandRendererFactory;
@@ -24,7 +24,7 @@ impl Default for WaylandRendererFactory {
 }
 
 impl OverlayRendererFactory for WaylandRendererFactory {
-    fn create(&self, bus: MessageBus) -> Box<dyn OverlayRenderer> {
+    fn create(&self, bus: MessageBus) -> Box<dyn platform::overlay::OverlayRenderer> {
         Box::new(WaylandRenderer::new(bus))
     }
 

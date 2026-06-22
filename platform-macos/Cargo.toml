@@ -7,6 +7,8 @@ license.workspace = true
 
 [dependencies]
 input-core = { path = "../input-core" }
+platform = { path = "../platform" }
+overlay-macos = { path = "../overlay-macos" }
 tokio = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }

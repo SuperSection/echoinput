@@ -3,7 +3,7 @@ use input_core::ipc::MessageBus;
 use input_core::overlay::{
     DisplayEvent, KeycapStyle, OverlayConfig, OverlayPosition, TextCaps, TextVariant,
 };
-use input_core::traits::{OverlayRenderer, OverlayRendererFactory};
+use platform::overlay::{OverlayRenderer, OverlayRendererFactory};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;

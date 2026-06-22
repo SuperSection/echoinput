@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use evdev::{Device, EventType, InputEvent as EvdevEvent, KeyCode};
 use input_core::events::{InputEvent, KeyState, KeyboardEvent};
 use input_core::keys::VirtualKey;
-use input_core::traits::{CaptureFeatures, KeyboardCaptureProvider};
+use platform::capture::{CaptureFeatures, KeyboardCaptureProvider};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;

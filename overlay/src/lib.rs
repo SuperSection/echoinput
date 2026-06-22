@@ -1,7 +1,7 @@
 use input_core::events::ShortcutCombo;
 use input_core::ipc::{MessageBus, OverlayCommand, SettingsUpdate, ShortcutEvent};
 use input_core::overlay::{DisplayEvent, OverlayConfig};
-use input_core::traits::OverlayRenderer;
+use platform::overlay::OverlayRenderer;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Instant;

@@ -213,7 +213,7 @@ impl WaylandRenderer {
 }
 
 #[async_trait::async_trait]
-impl input_core::traits::OverlayRenderer for WaylandRenderer {
+impl platform::overlay::OverlayRenderer for WaylandRenderer {
     async fn start(&mut self, config: OverlayConfig) -> anyhow::Result<()> {
         let bus = self.bus.take().ok_or_else(|| {
             WaylandError::Connection("No MessageBus provided".into())

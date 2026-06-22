@@ -2,7 +2,8 @@ pub mod keymap;
 
 use anyhow::Result;
 use input_core::events::InputEvent;
-use input_core::traits::{CaptureFeatures, KeyboardCaptureProvider};
+use input_core::keys::VirtualKey;
+use platform::capture::{CaptureFeatures, KeyboardCaptureProvider, KeyboardCaptureFactory};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -57,7 +58,7 @@ impl KeyboardCaptureProvider for WindowsCapture {
             return Ok(());
         }
 
-        let _tx = self.tx.clone();
+        let tx = self.tx.clone();
         let running = self.running.clone();
         let shutdown = self.shutdown.clone();
 
@@ -123,6 +124,8 @@ fn run_windows_hook(
     shutdown: Arc<AtomicBool>,
 ) -> Result<()> {
     use crate::keymap::vk_with_scancode_to_key;
+    use input_core::events::{KeyboardEvent, KeyState};
+    use std::time::SystemTime;
 
     unsafe extern "system" fn keyboard_proc(
         n_code: i32,
@@ -218,5 +221,49 @@ impl Drop for WindowsCapture {
         if let Some(handle) = self.hook_handle.take() {
             let _ = handle.thread.join();
         }
+    }
+}
+
+/// Factory for creating Windows keyboard capture providers.
+pub struct WindowsCaptureFactory;
+
+impl WindowsCaptureFactory {
+    pub fn new() -> Self { Self }
+}
+
+impl Default for WindowsCaptureFactory {
+    fn default() -> Self { Self::new() }
+}
+
+impl KeyboardCaptureFactory for WindowsCaptureFactory {
+    fn create(&self) -> Box<dyn platform::capture::KeyboardCaptureProvider> {
+        Box::new(WindowsCapture::new().expect("Failed to create WindowsCapture"))
+    }
+
+    fn platform_name(&self) -> &str {
+        "windows-hook"
+    }
+}
+
+/// Factory for creating Windows overlay renderer.
+pub struct WindowsRendererFactory {
+    inner: overlay_windows::WindowsRendererFactory,
+}
+
+impl WindowsRendererFactory {
+    pub fn new() -> Self { Self { inner: overlay_windows::WindowsRendererFactory::new() } }
+}
+
+impl Default for WindowsRendererFactory {
+    fn default() -> Self { Self::new() }
+}
+
+impl platform::overlay::OverlayRendererFactory for WindowsRendererFactory {
+    fn create(&self, bus: input_core::ipc::MessageBus) -> Box<dyn platform::overlay::OverlayRenderer> {
+        self.inner.create(bus)
+    }
+
+    fn platform_name(&self) -> &str {
+        "windows"
     }
 }
