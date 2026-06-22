@@ -1,7 +1,6 @@
 //! Core traits.
 
 use crate::events::{InputEvent, ProcessedEvent, ModifierState, ShortcutCombo};
-use anyhow::Result;
 
 /// Platform-independent event processor.
 ///

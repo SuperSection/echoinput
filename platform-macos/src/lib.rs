@@ -3,7 +3,6 @@ pub mod overlay;
 
 use anyhow::Result;
 use input_core::events::InputEvent;
-use input_core::keys::VirtualKey;
 use input_core::ipc::MessageBus;
 use platform::capture::{CaptureFeatures, KeyboardCaptureProvider, KeyboardCaptureFactory};
 use platform::overlay::OverlayRendererFactory;
@@ -56,16 +55,17 @@ impl KeyboardCaptureProvider for MacosCapture {
             return Ok(());
         }
 
-        let tx = self.tx.clone();
         let running = self.running.clone();
         let shutdown = self.shutdown.clone();
+        let _tx = self.tx.clone();
+        let _ = _tx; // suppress unused warning
 
         let thread = std::thread::Builder::new()
             .name("macos-cgevent-tap".into())
             .spawn(move || {
                 #[cfg(target_os = "macos")]
                 {
-                    if let Err(e) = run_macos_event_tap(tx, running, shutdown) {
+                    if let Err(e) = run_macos_event_tap(_tx, running, shutdown) {
                         error!("macOS event tap error: {}", e);
                     }
                 }

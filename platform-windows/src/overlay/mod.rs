@@ -10,7 +10,7 @@ use tokio::sync::mpsc;
 use tracing::{info, warn};
 
 enum RendererCommand {
-    Update(DisplayEvent),
+    Update(()),
     Stop,
 }
 
@@ -69,9 +69,9 @@ impl OverlayRenderer for WindowsRenderer {
         Ok(())
     }
 
-    fn update(&self, event: DisplayEvent) -> anyhow::Result<()> {
+    fn update(&self, _event: DisplayEvent) -> anyhow::Result<()> {
         if let Some(tx) = &self.cmd_tx {
-            tx.send(RendererCommand::Update(event))
+            tx.send(RendererCommand::Update(()))
                 .map_err(|e| anyhow::anyhow!("{}", e))?;
         }
         Ok(())
@@ -100,6 +100,7 @@ impl OverlayRendererFactory for WindowsRendererFactory {
 
 // ── Hex color parsing ──────────────────────────────────────────
 
+#[allow(dead_code)]
 fn parse_hex_color(hex: &str) -> (u8, u8, u8) {
     let hex = hex.trim_start_matches('#');
     match hex.len() {
@@ -194,7 +195,7 @@ fn run_windows_overlay(
             // Handle commands
             while let Ok(cmd) = cmd_rx.try_recv() {
                 match cmd {
-                    RendererCommand::Update(event) => match event {
+                    RendererCommand::Update(display_event) => match display_event {
                         DisplayEvent::Shortcut(combo) => {
                             if combo.modifiers.is_empty() {
                                 if let Some(front) = current_combos.first() {
@@ -468,10 +469,12 @@ unsafe fn hide_window(hwnd: windows::Win32::Foundation::HWND) {
 }
 
 #[cfg(not(target_os = "windows"))]
+#[allow(dead_code)]
 unsafe fn hide_window(_hwnd: isize) {}
 
 // ── Cross-platform helpers ──────────────────────────────────────
 
+#[allow(dead_code)]
 fn combo_to_key_parts(combo: &ShortcutCombo, variant: &TextVariant) -> Vec<String> {
     if combo.is_sequence() {
         return combo.key_sequence.iter().map(|k| apply_text_variant(&k.label(), variant)).collect();
@@ -485,6 +488,7 @@ fn combo_to_key_parts(combo: &ShortcutCombo, variant: &TextVariant) -> Vec<Strin
     parts
 }
 
+#[allow(dead_code)]
 fn apply_text_variant(label: &str, variant: &TextVariant) -> String {
     match variant {
         TextVariant::Full => label.to_string(),
@@ -493,6 +497,7 @@ fn apply_text_variant(label: &str, variant: &TextVariant) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn apply_modifier_label(label: &str, variant: &TextVariant) -> String {
     match variant {
         TextVariant::Full => match label { "Ctrl" => "Control".to_string(), _ => label.to_string() },
@@ -500,6 +505,7 @@ fn apply_modifier_label(label: &str, variant: &TextVariant) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn apply_text_caps(label: &str, caps: &TextCaps) -> String {
     match caps {
         TextCaps::Uppercase => label.to_uppercase(),
@@ -518,6 +524,7 @@ fn apply_text_caps(label: &str, caps: &TextCaps) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn shorten_label(label: &str) -> String {
     match label {
         "Control" => "Ctrl".to_string(),
@@ -530,6 +537,7 @@ fn shorten_label(label: &str) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn is_modifier_label(label: &str) -> bool {
     matches!(label, "Ctrl" | "Alt" | "Shift" | "Super" | "Meta" | "Control")
 }

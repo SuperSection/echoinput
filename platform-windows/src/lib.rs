@@ -3,7 +3,6 @@ pub mod overlay;
 
 use anyhow::Result;
 use input_core::events::InputEvent;
-use input_core::keys::VirtualKey;
 use input_core::ipc::MessageBus;
 use platform::capture::{CaptureFeatures, KeyboardCaptureProvider, KeyboardCaptureFactory};
 use platform::overlay::OverlayRendererFactory;
@@ -61,7 +60,7 @@ impl KeyboardCaptureProvider for WindowsCapture {
             return Ok(());
         }
 
-        let tx = self.tx.clone();
+        let _tx = self.tx.clone();
         let running = self.running.clone();
         let shutdown = self.shutdown.clone();
 
@@ -70,7 +69,7 @@ impl KeyboardCaptureProvider for WindowsCapture {
             .spawn(move || {
                 #[cfg(target_os = "windows")]
                 {
-                    if let Err(e) = run_windows_hook(tx, running, shutdown) {
+                    if let Err(e) = run_windows_hook(_tx, running, shutdown) {
                         error!("Windows keyboard hook error: {}", e);
                     }
                 }

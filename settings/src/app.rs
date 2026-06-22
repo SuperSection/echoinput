@@ -8,7 +8,7 @@ use input_core::presets::ThemePreset;
 use std::time::Instant;
 
 #[derive(PartialEq, Clone, Copy)]
-enum SettingsTab {
+pub enum SettingsTab {
     General,
     Position,
     Keycap,
@@ -17,7 +17,7 @@ enum SettingsTab {
 }
 
 impl SettingsTab {
-    fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Self::General => "General",
             Self::Position => "Position",
@@ -26,7 +26,7 @@ impl SettingsTab {
             Self::About => "About",
         }
     }
-    fn all() -> &'static [SettingsTab] {
+    pub fn all() -> &'static [SettingsTab] {
         &[Self::General, Self::Position, Self::Keycap, Self::Display, Self::About]
     }
 }

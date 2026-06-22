@@ -122,7 +122,6 @@ pub fn vk_to_key(vk: u32) -> VirtualKey {
         0x6A => VirtualKey::NumpadMultiply,
         0x6F => VirtualKey::NumpadDivide,
         0x6E => VirtualKey::NumpadDecimal,
-        0x0D => VirtualKey::NumpadEnter,
         0x90 => VirtualKey::NumpadLock,
 
         0xB3 => VirtualKey::MediaPlay,

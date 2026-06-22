@@ -2,7 +2,6 @@ use input_core::config::FileConfig;
 use input_core::events::{ModifierState, ProcessedEvent, ShortcutCombo};
 use input_core::ipc::MessageBus;
 use input_core::overlay::{DisplayEvent, OverlayConfig};
-use input_core::presets::ThemePreset;
 use input_core::processor::DefaultEventProcessor;
 use input_core::traits::{EventProcessor, ProcessorConfig};
 use platform::{KeyboardCaptureProvider, OverlayRenderer};
@@ -340,7 +339,7 @@ fn run_settings_gui(initial_config: FileConfig) {
 }
 
 #[derive(PartialEq, Clone, Copy)]
-enum SettingsTab {
+pub enum SettingsTab {
     General,
     Position,
     Keycap,
@@ -349,7 +348,7 @@ enum SettingsTab {
 }
 
 impl SettingsTab {
-    fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Self::General => "General",
             Self::Position => "Position",
@@ -358,7 +357,7 @@ impl SettingsTab {
             Self::About => "About",
         }
     }
-    fn all() -> &'static [SettingsTab] {
+    pub fn all() -> &'static [SettingsTab] {
         &[Self::General, Self::Position, Self::Keycap, Self::Display, Self::About]
     }
 }
@@ -374,7 +373,6 @@ struct SettingsApp {
     animation_type_index: usize,
     text_caps_index: usize,
     text_variant_index: usize,
-    preset_index: usize,
     save_status: String,
     save_status_time: Option<std::time::Instant>,
 }
@@ -401,7 +399,7 @@ impl SettingsApp {
             config, theme, active_tab: SettingsTab::General,
             position_index, scale_index, theme_index, keycap_style_index,
             animation_type_index, text_caps_index, text_variant_index,
-            preset_index: 0, save_status: String::new(), save_status_time: None,
+            save_status: String::new(), save_status_time: None,
         }
     }
 
@@ -413,28 +411,6 @@ impl SettingsApp {
         self.config.animation_type = Some(ANIMATION_TYPES[self.animation_type_index].into());
         self.config.text_caps = Some(TEXT_CAPS[self.text_caps_index].into());
         self.config.text_variant = Some(TEXT_VARIANTS[self.text_variant_index].into());
-    }
-
-    fn apply_preset(&mut self, preset: &ThemePreset) {
-        self.config.keycap_primary = Some(preset.colors.keycap_primary.clone());
-        self.config.keycap_secondary = Some(preset.colors.keycap_secondary.clone());
-        self.config.use_gradient = Some(preset.colors.use_gradient);
-        self.config.highlight_modifiers = Some(preset.colors.highlight_modifiers);
-        self.config.modifier_primary = Some(preset.colors.modifier_primary.clone());
-        self.config.modifier_secondary = Some(preset.colors.modifier_secondary.clone());
-        self.config.text_size = preset.text.size;
-        self.config.text_color = Some(preset.text.color.clone());
-        self.config.text_modifier_color = Some(preset.text.modifier_color.clone());
-        self.config.text_caps = Some(format!("{:?}", preset.text.caps));
-        self.config.text_variant = Some(format!("{:?}", preset.text.variant));
-        self.config.border_enabled = Some(preset.border.enabled);
-        self.config.border_color = Some(preset.border.color.clone());
-        self.config.border_width = Some(preset.border.width);
-        self.config.border_radius = Some(preset.border.radius);
-        self.config.border_modifier_color = Some(preset.border.modifier_color.clone());
-        self.keycap_style_index = KEYCAP_STYLES.iter().position(|&s| s == format!("{:?}", preset.keycap_style)).unwrap_or(1);
-        self.text_caps_index = TEXT_CAPS.iter().position(|&s| s == format!("{:?}", preset.text.caps)).unwrap_or(0);
-        self.text_variant_index = TEXT_VARIANTS.iter().position(|&s| s == format!("{:?}", preset.text.variant)).unwrap_or(0);
     }
 
     fn save(&mut self) {

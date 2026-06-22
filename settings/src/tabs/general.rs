@@ -2,7 +2,7 @@
 
 use crate::theme::Theme;
 use crate::app::{card, dropdown, save_bar, THEMES};
-use eframe::egui::{ComboBox, Context, RichText, TextEdit, Ui};
+use eframe::egui::{Context, RichText, TextEdit, Ui};
 
 pub fn render_general_tab(ui: &mut Ui, theme: &Theme, ctx: &Context, app: &mut crate::app::SettingsApp) {
     ui.add_space(4.0);

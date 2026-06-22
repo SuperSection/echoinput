@@ -9,8 +9,9 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
+#[allow(dead_code)]
 enum RendererCommand {
-    Update(DisplayEvent),
+    Update(()),
     Stop,
 }
 
@@ -69,9 +70,9 @@ impl OverlayRenderer for MacRenderer {
         Ok(())
     }
 
-    fn update(&self, event: DisplayEvent) -> anyhow::Result<()> {
+    fn update(&self, _event: DisplayEvent) -> anyhow::Result<()> {
         if let Some(tx) = &self.cmd_tx {
-            tx.send(RendererCommand::Update(event))
+            tx.send(RendererCommand::Update(()))
                 .map_err(|e| anyhow::anyhow!("{}", e))?;
         }
         Ok(())
@@ -100,6 +101,7 @@ impl OverlayRendererFactory for MacRendererFactory {
 
 // ── Hex color parsing ──────────────────────────────────────────
 
+#[allow(dead_code)]
 fn parse_hex_color_rgb(hex: &str) -> (f64, f64, f64) {
     let hex = hex.trim_start_matches('#');
     match hex.len() {
@@ -190,7 +192,7 @@ fn run_macos_overlay(
             // Handle commands
             while let Ok(cmd) = cmd_rx.try_recv() {
                 match cmd {
-                    RendererCommand::Update(event) => match event {
+                    RendererCommand::Update(display_event) => match display_event {
                         DisplayEvent::Shortcut(combo) => {
                             if combo.modifiers.is_empty() {
                                 if let Some(front) = current_combos.first() {
@@ -256,6 +258,7 @@ fn run_macos_overlay(
 }
 
 #[cfg(target_os = "macos")]
+#[allow(dead_code)]
 unsafe fn render_macos_view(
     view: *mut objc::runtime::Object,
     combos: &[ShortcutCombo],
@@ -332,6 +335,7 @@ unsafe fn render_macos_view(
 }
 
 #[cfg(not(target_os = "macos"))]
+#[allow(dead_code)]
 unsafe fn render_macos_view(
     _view: isize,
     _combos: &[ShortcutCombo],
@@ -344,6 +348,7 @@ unsafe fn render_macos_view(
 // ── Cairo rendering (shared with X11 and macOS) ────────────────
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+#[allow(dead_code)]
 fn render_keycaps_cairo(
     cr: &cairo::Context,
     combos: &[ShortcutCombo],
@@ -516,6 +521,7 @@ fn render_keycaps_cairo(
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+#[allow(dead_code)]
 fn measure_text_width_cairo(cr: &cairo::Context, label: &str, font_size: f64) -> f64 {
     if let Ok(extents) = cr.text_extents(label) {
         extents.x_bearing() + extents.width()
@@ -525,6 +531,7 @@ fn measure_text_width_cairo(cr: &cairo::Context, label: &str, font_size: f64) ->
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+#[allow(dead_code)]
 fn draw_rounded_rect(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, r: f64) {
     cr.new_sub_path();
     cr.arc(x + w - r, y + r, r, -std::f64::consts::FRAC_PI_2, 0.0);
@@ -536,6 +543,7 @@ fn draw_rounded_rect(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, r: f64
 
 // ── Shared helpers ──────────────────────────────────────────────
 
+#[allow(dead_code)]
 fn combo_to_key_parts(combo: &ShortcutCombo, variant: &TextVariant) -> Vec<String> {
     if combo.is_sequence() {
         return combo.key_sequence.iter().map(|k| apply_text_variant(&k.label(), variant)).collect();
@@ -549,6 +557,7 @@ fn combo_to_key_parts(combo: &ShortcutCombo, variant: &TextVariant) -> Vec<Strin
     parts
 }
 
+#[allow(dead_code)]
 fn apply_text_variant(label: &str, variant: &TextVariant) -> String {
     match variant {
         TextVariant::Full => label.to_string(),
@@ -557,6 +566,7 @@ fn apply_text_variant(label: &str, variant: &TextVariant) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn apply_modifier_label(label: &str, variant: &TextVariant) -> String {
     match variant {
         TextVariant::Full => match label { "Ctrl" => "Control".to_string(), _ => label.to_string() },
@@ -564,6 +574,7 @@ fn apply_modifier_label(label: &str, variant: &TextVariant) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn apply_text_caps(label: &str, caps: &TextCaps) -> String {
     match caps {
         TextCaps::Uppercase => label.to_uppercase(),
@@ -582,6 +593,7 @@ fn apply_text_caps(label: &str, caps: &TextCaps) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn shorten_label(label: &str) -> String {
     match label {
         "Control" => "Ctrl".to_string(),
@@ -594,6 +606,7 @@ fn shorten_label(label: &str) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn is_modifier_label(label: &str) -> bool {
     matches!(label, "Ctrl" | "Alt" | "Shift" | "Super" | "Meta" | "Control")
 }

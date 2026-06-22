@@ -94,8 +94,6 @@ pub fn keycode_to_key(keycode: u32) -> VirtualKey {
         0x7D => VirtualKey::Down,            // kVK_DownArrow
         0x7B => VirtualKey::Left,            // kVK_LeftArrow
         0x7C => VirtualKey::Right,           // kVK_RightArrow
-        0x69 => VirtualKey::PrintScreen,     // F13 mapped to PrintScreen
-        0x6B => VirtualKey::ScrollLock,      // F14 mapped to ScrollLock
         0x47 => VirtualKey::CapsLock,        // kVK_CapsLock
 
         // Punctuation & symbols
@@ -128,16 +126,10 @@ pub fn keycode_to_key(keycode: u32) -> VirtualKey {
         0x4B => VirtualKey::NumpadDivide,
         0x41 => VirtualKey::NumpadDecimal,
         0x4C => VirtualKey::NumpadEnter,
-        0x47 => VirtualKey::NumpadLock,
 
         // Media
         // macOS uses consumer control HID events, not keycodes for media keys
         // But these are the NX_KEYTYPE mapped values
-        0x10 => VirtualKey::MediaPlay,       // Play/Pause (mapped)
-        0x10 => VirtualKey::MediaPause,      // Pause
-        0x10 => VirtualKey::MediaStop,       // Stop
-        0x10 => VirtualKey::MediaNext,       // Next
-        0x10 => VirtualKey::MediaPrev,       // Previous
         0x46 => VirtualKey::Mute,            // kVK_Mute (NX_KEYTYPE_MUTE)
         0x48 => VirtualKey::VolumeDown,      // kVK_VolumeDown
         0x49 => VirtualKey::VolumeUp,        // kVK_VolumeUp

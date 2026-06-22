@@ -260,6 +260,71 @@ impl VirtualKey {
                 | Self::Meta
         )
     }
+
+    /// Returns true if this key is a letter (A-Z).
+    pub fn is_letter(&self) -> bool {
+        matches!(
+            self,
+            Self::A | Self::B | Self::C | Self::D | Self::E | Self::F | Self::G
+                | Self::H | Self::I | Self::J | Self::K | Self::L | Self::M
+                | Self::N | Self::O | Self::P | Self::Q | Self::R | Self::S
+                | Self::T | Self::U | Self::V | Self::W | Self::X | Self::Y | Self::Z
+        )
+    }
+
+    /// Returns the shifted character for this key if Shift is held,
+    /// otherwise returns None.
+    pub fn shifted_label(&self) -> Option<String> {
+        match self {
+            // Top row numbers
+            Self::Key1 => Some("!".into()),
+            Self::Key2 => Some("@".into()),
+            Self::Key3 => Some("#".into()),
+            Self::Key4 => Some("$".into()),
+            Self::Key5 => Some("%".into()),
+            Self::Key6 => Some("^".into()),
+            Self::Key7 => Some("&".into()),
+            Self::Key8 => Some("*".into()),
+            Self::Key9 => Some("(".into()),
+            Self::Key0 => Some(")".into()),
+            // Punctuation & symbols
+            Self::Minus => Some("_".into()),
+            Self::Equal => Some("+".into()),
+            Self::LeftBracket => Some("{".into()),
+            Self::RightBracket => Some("}".into()),
+            Self::Backslash => Some("|".into()),
+            Self::Semicolon => Some(":".into()),
+            Self::Quote => Some("\"".into()),
+            Self::Comma => Some("<".into()),
+            Self::Period => Some(">".into()),
+            Self::Slash => Some("?".into()),
+            Self::Backtick => Some("~".into()),
+            _ => None,
+        }
+    }
+
+    /// Returns the NumLock-off (navigation) label for numpad keys.
+    pub fn numlock_off_label(&self) -> Option<String> {
+        match self {
+            Self::Numpad0 => Some("Ins".into()),
+            Self::Numpad1 => Some("End".into()),
+            Self::Numpad2 => Some("Down".into()),
+            Self::Numpad3 => Some("PgDn".into()),
+            Self::Numpad4 => Some("Left".into()),
+            Self::Numpad5 => Some("Num5".into()), // No nav equivalent
+            Self::Numpad6 => Some("Right".into()),
+            Self::Numpad7 => Some("Home".into()),
+            Self::Numpad8 => Some("Up".into()),
+            Self::Numpad9 => Some("PgUp".into()),
+            Self::NumpadDecimal => Some("Del".into()),
+            Self::NumpadEnter => Some("Enter".into()),
+            Self::NumpadAdd => Some("Num+".into()),
+            Self::NumpadSubtract => Some("Num-".into()),
+            Self::NumpadMultiply => Some("Num*".into()),
+            Self::NumpadDivide => Some("Num/".into()),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for VirtualKey {

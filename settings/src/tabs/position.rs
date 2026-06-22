@@ -2,7 +2,7 @@
 
 use crate::theme::Theme;
 use crate::app::{POSITIONS, SCALES, ANIMATION_TYPES, card, dropdown, labeled_slider, save_bar};
-use eframe::egui::{ComboBox, Context, RichText, Ui};
+use eframe::egui::{Context, Ui};
 
 pub fn render_position_tab(ui: &mut Ui, theme: &Theme, ctx: &Context, app: &mut crate::app::SettingsApp) {
     ui.add_space(4.0);

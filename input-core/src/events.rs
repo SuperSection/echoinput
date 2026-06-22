@@ -16,6 +16,10 @@ pub struct ModifierState {
     pub alt: bool,
     pub shift: bool,
     pub super_key: bool,
+    /// CapsLock toggle state (on/off)
+    pub capslock: bool,
+    /// NumLock toggle state (on/off)
+    pub numlock: bool,
 }
 
 impl ModifierState {
@@ -48,6 +52,16 @@ impl ModifierState {
             s.push_str("⌘ ");
         }
         s
+    }
+
+    /// Returns true if CapsLock is currently enabled.
+    pub fn is_capslock_on(&self) -> bool {
+        self.capslock
+    }
+
+    /// Returns true if NumLock is currently enabled.
+    pub fn is_numlock_on(&self) -> bool {
+        self.numlock
     }
 }
 
@@ -139,9 +153,43 @@ impl ShortcutCombo {
             parts.push("Super".to_string());
         }
         if let Some(k) = key {
-            parts.push(k.label());
+            let key_label = Self::get_key_display(mods, k);
+            parts.push(key_label);
         }
         parts.join(" + ")
+    }
+
+    /// Get the display label for a key given the current modifier state.
+    /// Handles shifted symbols, CapsLock for letters, and NumLock for numpad.
+    fn get_key_display(mods: &ModifierState, key: &VirtualKey) -> String {
+        // Check for shifted symbols first
+        if mods.shift {
+            if let Some(shifted) = key.shifted_label() {
+                return shifted;
+            }
+        }
+
+        // Check for numpad keys with NumLock off
+        if !mods.is_numlock_on() {
+            if let Some(numlock_off) = key.numlock_off_label() {
+                return numlock_off;
+            }
+        }
+
+        // Handle letters with CapsLock
+        // Only apply CapsLock logic when no other modifiers (Ctrl, Alt, Super) are held.
+        // In shortcut combinations like Ctrl+C, show the key label as uppercase.
+        if key.is_letter() && !mods.ctrl && !mods.alt && !mods.super_key {
+            let base = key.label();
+            let is_uppercase = mods.is_capslock_on() ^ mods.shift; // XOR: Shift reverses CapsLock
+            if is_uppercase {
+                base.to_uppercase()
+            } else {
+                base.to_lowercase()
+            }
+        } else {
+            key.label()
+        }
     }
 
     /// Returns true if this is a modifier-only combo (no non-modifier key).
@@ -226,4 +274,329 @@ pub struct EnrichedShortcut {
     pub shortcut: ShortcutCombo,
     pub app_context: Option<AppContext>,
     pub description: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::keys::VirtualKey;
+
+    #[test]
+    fn test_shifted_symbols_display() {
+        // Test all shifted symbols show resulting character
+        let mods = ModifierState {
+            shift: true,
+            ..Default::default()
+        };
+
+        // Number row symbols
+        assert_eq!(
+            ShortcutCombo::build_display(&mods, Some(&VirtualKey::Key1)),
+            "Shift + !"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods, Some(&VirtualKey::Key2)),
+            "Shift + @"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods, Some(&VirtualKey::Key3)),
+            "Shift + #"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods, Some(&VirtualKey::Key4)),
+            "Shift + $"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods, Some(&VirtualKey::Key5)),
+            "Shift + %"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods, Some(&VirtualKey::Key6)),
+            "Shift + ^"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods, Some(&VirtualKey::Key7)),
+            "Shift + &"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods, Some(&VirtualKey::Key8)),
+            "Shift + *"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods, Some(&VirtualKey::Key9)),
+            "Shift + ("
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods, Some(&VirtualKey::Key0)),
+            "Shift + )"
+        );
+
+        // Punctuation & symbols
+        assert_eq!(
+            ShortcutCombo::build_display(&mods, Some(&VirtualKey::Minus)),
+            "Shift + _"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods, Some(&VirtualKey::Equal)),
+            "Shift + +"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods, Some(&VirtualKey::LeftBracket)),
+            "Shift + {"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods, Some(&VirtualKey::RightBracket)),
+            "Shift + }"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods, Some(&VirtualKey::Backslash)),
+            "Shift + |"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods, Some(&VirtualKey::Semicolon)),
+            "Shift + :"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods, Some(&VirtualKey::Quote)),
+            "Shift + \""
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods, Some(&VirtualKey::Comma)),
+            "Shift + <"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods, Some(&VirtualKey::Period)),
+            "Shift + >"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods, Some(&VirtualKey::Slash)),
+            "Shift + ?"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods, Some(&VirtualKey::Backtick)),
+            "Shift + ~"
+        );
+    }
+
+    #[test]
+    fn test_capslock_letters_display() {
+        // CapsLock off, no Shift -> lowercase
+        let mods_off = ModifierState {
+            capslock: false,
+            shift: false,
+            ..Default::default()
+        };
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_off, Some(&VirtualKey::A)),
+            "a"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_off, Some(&VirtualKey::Z)),
+            "z"
+        );
+
+        // CapsLock on, no Shift -> uppercase
+        let mods_on = ModifierState {
+            capslock: true,
+            shift: false,
+            ..Default::default()
+        };
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_on, Some(&VirtualKey::A)),
+            "A"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_on, Some(&VirtualKey::Z)),
+            "Z"
+        );
+
+        // CapsLock off, Shift held -> uppercase
+        let mods_shift = ModifierState {
+            capslock: false,
+            shift: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_shift, Some(&VirtualKey::A)),
+            "Shift + A"
+        );
+
+        // CapsLock on, Shift held -> lowercase (Shift reverses CapsLock)
+        let mods_both = ModifierState {
+            capslock: true,
+            shift: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_both, Some(&VirtualKey::A)),
+            "Shift + a"
+        );
+    }
+
+    #[test]
+    fn test_capslock_with_other_modifiers_shows_uppercase() {
+        // Ctrl + C should show uppercase C, not lowercase
+        let mods_ctrl = ModifierState {
+            ctrl: true,
+            capslock: false,
+            shift: false,
+            ..Default::default()
+        };
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_ctrl, Some(&VirtualKey::C)),
+            "Ctrl + C"
+        );
+
+        // Ctrl + Shift + C should show uppercase C
+        let mods_ctrl_shift = ModifierState {
+            ctrl: true,
+            shift: true,
+            capslock: false,
+            ..Default::default()
+        };
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_ctrl_shift, Some(&VirtualKey::C)),
+            "Ctrl + Shift + C"
+        );
+    }
+
+    #[test]
+    fn test_numlock_on_numpad_display() {
+        let mods_on = ModifierState {
+            numlock: true,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_on, Some(&VirtualKey::Numpad0)),
+            "Num0"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_on, Some(&VirtualKey::Numpad5)),
+            "Num5"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_on, Some(&VirtualKey::Numpad9)),
+            "Num9"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_on, Some(&VirtualKey::NumpadAdd)),
+            "Num+"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_on, Some(&VirtualKey::NumpadSubtract)),
+            "Num-"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_on, Some(&VirtualKey::NumpadMultiply)),
+            "Num*"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_on, Some(&VirtualKey::NumpadDivide)),
+            "Num/"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_on, Some(&VirtualKey::NumpadDecimal)),
+            "Num."
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_on, Some(&VirtualKey::NumpadEnter)),
+            "NumEnter"
+        );
+    }
+
+    #[test]
+    fn test_numlock_off_numpad_display() {
+        let mods_off = ModifierState {
+            numlock: false,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_off, Some(&VirtualKey::Numpad0)),
+            "Ins"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_off, Some(&VirtualKey::Numpad1)),
+            "End"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_off, Some(&VirtualKey::Numpad2)),
+            "Down"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_off, Some(&VirtualKey::Numpad3)),
+            "PgDn"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_off, Some(&VirtualKey::Numpad4)),
+            "Left"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_off, Some(&VirtualKey::Numpad5)),
+            "Num5"
+        ); // No nav equivalent
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_off, Some(&VirtualKey::Numpad6)),
+            "Right"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_off, Some(&VirtualKey::Numpad7)),
+            "Home"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_off, Some(&VirtualKey::Numpad8)),
+            "Up"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_off, Some(&VirtualKey::Numpad9)),
+            "PgUp"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_off, Some(&VirtualKey::NumpadDecimal)),
+            "Del"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_off, Some(&VirtualKey::NumpadEnter)),
+            "Enter"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_off, Some(&VirtualKey::NumpadAdd)),
+            "Num+"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_off, Some(&VirtualKey::NumpadSubtract)),
+            "Num-"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_off, Some(&VirtualKey::NumpadMultiply)),
+            "Num*"
+        );
+        assert_eq!(
+            ShortcutCombo::build_display(&mods_off, Some(&VirtualKey::NumpadDivide)),
+            "Num/"
+        );
+    }
+
+    #[test]
+    fn test_letter_display_with_capslock_and_shift_combinations() {
+        // All combinations for a letter key
+        let test_cases = vec![
+            // (capslock, shift, expected)
+            (false, false, "a"),
+            (true, false, "A"),
+            (false, true, "Shift + A"),
+            (true, true, "Shift + a"),
+        ];
+
+        for (capslock, shift, expected) in test_cases {
+            let mods = ModifierState {
+                capslock,
+                shift,
+                ..Default::default()
+            };
+            let result = ShortcutCombo::build_display(&mods, Some(&VirtualKey::A));
+            assert_eq!(result, expected, "Failed for capslock={}, shift={}", capslock, shift);
+        }
+    }
 }

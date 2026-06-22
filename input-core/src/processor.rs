@@ -43,6 +43,18 @@ impl DefaultEventProcessor {
             VirtualKey::SuperLeft | VirtualKey::SuperRight | VirtualKey::Meta => {
                 self.modifiers.super_key = pressed
             }
+            VirtualKey::CapsLock => {
+                // CapsLock toggles on press (not release)
+                if pressed {
+                    self.modifiers.capslock = !self.modifiers.capslock;
+                }
+            }
+            VirtualKey::NumpadLock => {
+                // NumLock toggles on press (not release)
+                if pressed {
+                    self.modifiers.numlock = !self.modifiers.numlock;
+                }
+            }
             _ => {}
         }
     }
@@ -59,6 +71,8 @@ impl DefaultEventProcessor {
                 | VirtualKey::SuperLeft
                 | VirtualKey::SuperRight
                 | VirtualKey::Meta
+                | VirtualKey::CapsLock
+                | VirtualKey::NumpadLock
         )
     }
 
