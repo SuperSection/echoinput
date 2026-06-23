@@ -1627,8 +1627,8 @@ impl Dispatch<wl_output::WlOutput, ()> for AppState {
                 flags: WEnum::Value(f),
                 ..
             } if f.bits() & 1 != 0 => {
-                    info.width = width;
-                    info.height = height;
+                info.width = width;
+                info.height = height;
             }
             _ => {}
         }
