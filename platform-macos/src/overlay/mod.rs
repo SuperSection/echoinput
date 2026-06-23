@@ -5,7 +5,7 @@ use platform::overlay::{OverlayRenderer, OverlayRendererFactory};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::{error, info};
+use tracing::info;
 
 #[allow(dead_code)]
 enum RendererCommand {
@@ -58,7 +58,7 @@ impl OverlayRenderer for MacRenderer {
             #[cfg(target_os = "macos")]
             {
                 if let Err(e) = run_macos_overlay(bus, config, cmd_rx, shutdown) {
-                    error!("macOS overlay error: {}", e);
+                    tracing::error!("macOS overlay error: {}", e);
                 }
             }
             #[cfg(not(target_os = "macos"))]
@@ -311,7 +311,7 @@ unsafe fn render_macos_view(
     let surf_w = screen_w as i32;
     let surf_h = screen_h as i32;
 
-    if let Ok(surface) = cairo::ImageSurface::create(cairo::Format::ARgb32, surf_w, surf_h) {
+    if let Ok(mut surface) = cairo::ImageSurface::create(cairo::Format::ARgb32, surf_w, surf_h) {
         {
             if let Ok(cr) = cairo::Context::new(&surface) {
                 render_keycaps_cairo(&cr, combos, config, surf_w as f64, surf_h as f64);
@@ -319,11 +319,10 @@ unsafe fn render_macos_view(
         }
         surface.flush();
 
-        if let Ok(data) = surface.data() {
-            let width = surface.width() as usize;
-            let height = surface.height() as usize;
-            let bytes_per_row = surface.stride() as usize;
+        let width = surface.width() as usize;
+        let height = surface.height() as usize;
 
+        if let Ok(data) = surface.data() {
             // Create NSBitmapImageRep from Cairo data
             let bitmap_class = Class::get("NSBitmapImageRep").unwrap();
             let bitmap: *mut Object = msg_send![bitmap_class, alloc];
@@ -506,11 +505,11 @@ fn render_keycaps_cairo(
 
             match config.keycap_style {
                 KeycapStyle::Minimal => {
-                    let _ = cr.set_source_rgba(bg_r, bg_g, bg_b, row_opacity as f64 * 0.9);
+                    cr.set_source_rgba(bg_r, bg_g, bg_b, row_opacity as f64 * 0.9);
                     let _ = cr.fill();
                 }
                 KeycapStyle::LowProfile => {
-                    let _ = cr.set_source_rgba(
+                    cr.set_source_rgba(
                         bg_r * 0.8,
                         bg_g * 0.8,
                         bg_b * 0.8,
@@ -537,7 +536,7 @@ fn render_keycaps_cairo(
                         );
                         let _ = cr.set_source(&pattern);
                     } else {
-                        let _ = cr.set_source_rgba(bg_r, bg_g, bg_b, row_opacity as f64 * 0.9);
+                        cr.set_source_rgba(bg_r, bg_g, bg_b, row_opacity as f64 * 0.9);
                     }
                     let _ = cr.fill_preserve();
                 }

@@ -11,7 +11,7 @@ use platform::overlay::OverlayRendererFactory;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use tracing::{error, info};
+use tracing::info;
 
 /// macOS keyboard capture provider using CGEventTap.
 ///
@@ -68,7 +68,7 @@ impl KeyboardCaptureProvider for MacosCapture {
                 #[cfg(target_os = "macos")]
                 {
                     if let Err(e) = run_macos_event_tap(_tx, running, shutdown) {
-                        error!("macOS event tap error: {}", e);
+                        tracing::error!("macOS event tap error: {}", e);
                     }
                 }
                 #[cfg(not(target_os = "macos"))]
@@ -146,7 +146,8 @@ fn run_macos_event_tap(
             if event_type_u32 == CGEventType::KeyDown as u32
                 || event_type_u32 == CGEventType::KeyUp as u32
             {
-                let keycode = event.integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE) as u32;
+                let keycode =
+                    event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE) as u32;
                 let key_down = event_type_u32 == CGEventType::KeyDown as u32;
                 let _ = event_tx_for_closure.send((keycode, key_down));
             }
