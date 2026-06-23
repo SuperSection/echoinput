@@ -9,10 +9,8 @@ use platform::overlay::OverlayRendererFactory;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use tracing::{info, warn};
+use tracing::info;
 
-#[cfg(target_os = "windows")]
-use windows::Win32::Foundation::HWND;
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::*;
 
@@ -70,12 +68,12 @@ impl KeyboardCaptureProvider for WindowsCapture {
                 #[cfg(target_os = "windows")]
                 {
                     if let Err(e) = run_windows_hook(_tx, running, shutdown) {
-                        error!("Windows keyboard hook error: {}", e);
+                        tracing::error!("Windows keyboard hook error: {}", e);
                     }
                 }
                 #[cfg(not(target_os = "windows"))]
                 {
-                    warn!("Windows keyboard capture not available on this platform");
+                    tracing::warn!("Windows keyboard capture not available on this platform");
                     running.store(true, Ordering::Relaxed);
                     while !shutdown.load(Ordering::Relaxed) {
                         std::thread::sleep(std::time::Duration::from_millis(100));

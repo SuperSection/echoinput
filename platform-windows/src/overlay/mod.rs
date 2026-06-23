@@ -1,11 +1,11 @@
 use input_core::events::ShortcutCombo;
 use input_core::ipc::MessageBus;
-use input_core::overlay::{DisplayEvent, OverlayConfig, TextCaps, TextVariant};
+use input_core::overlay::{DisplayEvent, OverlayConfig, OverlayPosition, TextCaps, TextVariant};
 use platform::overlay::{OverlayRenderer, OverlayRendererFactory};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::{info, warn};
+use tracing::info;
 
 #[allow(dead_code)]
 enum RendererCommand {
@@ -58,12 +58,12 @@ impl OverlayRenderer for WindowsRenderer {
             #[cfg(target_os = "windows")]
             {
                 if let Err(e) = run_windows_overlay(bus, config, cmd_rx, shutdown) {
-                    error!("Windows overlay error: {}", e);
+                    tracing::error!("Windows overlay error: {}", e);
                 }
             }
             #[cfg(not(target_os = "windows"))]
             {
-                warn!("Windows overlay not available on this platform");
+                tracing::warn!("Windows overlay not available on this platform");
                 let _ = (bus, config, cmd_rx, shutdown);
             }
         });
@@ -148,31 +148,31 @@ fn run_windows_overlay(
     mut cmd_rx: mpsc::UnboundedReceiver<RendererCommand>,
     shutdown: Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
+    use std::sync::atomic::Ordering;
+    use std::time::Duration;
     use windows::Win32::Foundation::*;
     use windows::Win32::Graphics::Gdi::*;
+    use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows::Win32::UI::HiDpi::*;
     use windows::Win32::UI::WindowsAndMessaging::*;
 
     unsafe {
-        // Set DPI awareness
         let _ = SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
 
-        // Register window class
         let class_name = windows::core::w!("EchoInputOverlay");
         let mut wc: WNDCLASSEXW = std::mem::zeroed();
         wc.cbSize = std::mem::size_of::<WNDCLASSEXW>() as u32;
         wc.style = CS_HREDRAW | CS_VREDRAW;
         wc.lpfnWndProc = Some(overlay_wndproc);
-        wc.hInstance = GetModuleHandleW(None).into();
+        wc.hInstance = GetModuleHandleW(None).map(|h| h.into()).unwrap_or_default();
         wc.lpszClassName = class_name;
-        wc.hbrBackground = GetStockObject(NULL_BRUSH);
+        wc.hbrBackground = HBRUSH(GetStockObject(NULL_BRUSH).0);
 
         RegisterClassExW(&wc);
 
-        // Get screen dimensions
         let screen_w = GetSystemMetrics(SM_CXSCREEN);
         let screen_h = GetSystemMetrics(SM_CYSCREEN);
 
-        // Create the overlay window
         let hwnd = CreateWindowExW(
             WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
             class_name,
@@ -184,11 +184,10 @@ fn run_windows_overlay(
             screen_h,
             None,
             None,
-            GetModuleHandleW(None),
+            GetModuleHandleW(None).ok(),
             None,
         )?;
 
-        // Make window transparent
         let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA);
 
         ShowWindow(hwnd, SW_SHOWNA);
@@ -220,7 +219,6 @@ fn run_windows_overlay(
                 break;
             }
 
-            // Handle commands
             while let Ok(cmd) = cmd_rx.try_recv() {
                 match cmd {
                     RendererCommand::Update(display_event) => match display_event {
@@ -284,7 +282,7 @@ fn run_windows_overlay(
 
 #[cfg(target_os = "windows")]
 unsafe extern "system" fn overlay_wndproc(
-    hwnd: HWND,
+    hwnd: windows::Win32::Foundation::HWND,
     msg: u32,
     w_param: windows::Win32::Foundation::WPARAM,
     l_param: windows::Win32::Foundation::LPARAM,
@@ -293,7 +291,7 @@ unsafe extern "system" fn overlay_wndproc(
     match msg {
         WM_DESTROY => {
             PostQuitMessage(0);
-            LRESULT(0)
+            windows::Win32::Foundation::LRESULT(0)
         }
         _ => DefWindowProcW(hwnd, msg, w_param, l_param),
     }
@@ -315,19 +313,18 @@ unsafe fn render_frame(
     let hdc_screen = GetDC(None);
     let hdc_mem = CreateCompatibleDC(hdc_screen);
 
-    let mut bmi: BITMAPINFOHEADER = std::mem::zeroed();
-    bmi.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
-    bmi.biWidth = screen_w;
-    bmi.biHeight = -screen_h; // top-down
-    bmi.biPlanes = 1;
-    bmi.biBitCount = 32;
-    bmi.biCompression = BI_RGB;
+    let mut bmi: BITMAPINFO = std::mem::zeroed();
+    bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+    bmi.bmiHeader.biWidth = screen_w;
+    bmi.bmiHeader.biHeight = -screen_h;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = 0;
 
     let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
-    let hbitmap = CreateDIBSection(hdc_screen, &bmi, DIB_RGB_COLORS, &mut bits, 0, 0);
+    let hbitmap = CreateDIBSection(hdc_screen, &bmi, DIB_RGB_COLORS, &mut bits, None, 0).unwrap();
     let old_bitmap = SelectObject(hdc_mem, hbitmap);
 
-    // Clear to transparent
     let clear_brush = CreateSolidBrush(COLORREF(0x00000000));
     let empty_rect = RECT {
         left: 0,
@@ -338,16 +335,14 @@ unsafe fn render_frame(
     FillRect(hdc_mem, &empty_rect, clear_brush);
     DeleteObject(clear_brush);
 
-    // Render keycaps
     render_keycaps_gdi(hdc_mem, combos, config, screen_w, screen_h);
 
-    // Present with per-pixel alpha
-    let mut ppt_dst = POINT { x: 0, y: 0 };
-    let mut size = SIZE {
+    let ppt_dst = POINT { x: 0, y: 0 };
+    let size = SIZE {
         cx: screen_w,
         cy: screen_h,
     };
-    let mut ppt_src = POINT { x: 0, y: 0 };
+    let ppt_src = POINT { x: 0, y: 0 };
     let blend = BLENDFUNCTION {
         BlendOp: AC_SRC_OVER,
         BlendFlags: 0,
@@ -358,16 +353,15 @@ unsafe fn render_frame(
     let _ = UpdateLayeredWindow(
         hwnd,
         hdc_screen,
-        None,
+        Some(&ppt_dst),
         Some(&size),
         hdc_mem,
         Some(&ppt_src),
-        0,
+        COLORREF(0),
         Some(&blend),
         ULW_ALPHA,
     );
 
-    // Cleanup
     SelectObject(hdc_mem, old_bitmap);
     DeleteObject(hbitmap);
     DeleteDC(hdc_mem);
@@ -390,13 +384,11 @@ unsafe fn render_keycaps_gdi(
     let keycap_h = font_size + padding_y * 2;
     let corner_radius = (font_size as f64 * config.border.radius as f64) as i32;
 
-    let (keycap_bg, _) = parse_hex_color(&config.colors.keycap_primary);
-    let (keycap_bg2, _) = parse_hex_color(&config.colors.keycap_secondary);
-    let (mod_bg, _) = parse_hex_color(&config.colors.modifier_primary);
+    let (keycap_bg_r, keycap_bg_g, keycap_bg_b) = parse_hex_color(&config.colors.keycap_primary);
+    let (mod_bg_r, mod_bg_g, mod_bg_b) = parse_hex_color(&config.colors.modifier_primary);
     let (txt_r, txt_g, txt_b) = parse_hex_color(&config.text.color);
     let (mod_txt_r, mod_txt_g, mod_txt_b) = parse_hex_color(&config.text.modifier_color);
 
-    // Create font
     let font_name = windows::core::w!("Segoe UI");
     let hfont = CreateFontW(
         font_size,
@@ -417,7 +409,10 @@ unsafe fn render_keycaps_gdi(
     let old_font = SelectObject(hdc, hfont);
 
     SetBkMode(hdc, TRANSPARENT);
-    SetTextColor(hdc, RGB(txt_r, txt_g, txt_b));
+    SetTextColor(
+        hdc,
+        COLORREF((txt_r as u32) | ((txt_g as u32) << 8) | ((txt_b as u32) << 16)),
+    );
 
     let visible: Vec<&ShortcutCombo> = combos.iter().take(5).collect();
     let mut y = match config.position {
@@ -441,26 +436,24 @@ unsafe fn render_keycaps_gdi(
         let mut x = match config.position {
             OverlayPosition::TopLeft | OverlayPosition::BottomLeft => config.margin_x as i32,
             OverlayPosition::TopRight | OverlayPosition::BottomRight => {
-                // Approximate width
                 (screen_w - 200 - config.margin_x as i32).max(0)
             }
             _ => ((screen_w - 200) / 2).max(0),
         };
 
-        let row_alpha = (255.0 * (1.0 - row_idx as f32 * 0.15).max(0.3)) as u8;
+        let _row_alpha = (255.0 * (1.0 - row_idx as f32 * 0.15).max(0.3)) as u8;
 
         for (i, label) in parts.iter().enumerate() {
             let label_w = measure_text_width_gdi(hdc, label) + padding_x * 2;
             let is_mod = is_modifier_label(label);
 
-            let bg = if is_mod && config.colors.highlight_modifiers {
-                mod_bg
+            let (bg_r, bg_g, bg_b) = if is_mod && config.colors.highlight_modifiers {
+                (mod_bg_r, mod_bg_g, mod_bg_b)
             } else {
-                keycap_bg
+                (keycap_bg_r, keycap_bg_g, keycap_bg_b)
             };
-            let bg_color = COLORREF((bg as u32) | ((bg as u32) << 8) | ((bg as u32) << 16));
+            let bg_color = COLORREF((bg_r as u32) | ((bg_g as u32) << 8) | ((bg_b as u32) << 16));
 
-            // Draw keycap background
             let brush = CreateSolidBrush(bg_color);
             let pen = if config.border.enabled {
                 let (br, bg2, bb) = parse_hex_color(&config.border.color);
@@ -490,11 +483,18 @@ unsafe fn render_keycaps_gdi(
             DeleteObject(brush);
             DeleteObject(pen);
 
-            // Draw text
             if is_mod && config.colors.highlight_modifiers {
-                SetTextColor(hdc, RGB(mod_txt_r, mod_txt_g, mod_txt_b));
+                SetTextColor(
+                    hdc,
+                    COLORREF(
+                        (mod_txt_r as u32) | ((mod_txt_g as u32) << 8) | ((mod_txt_b as u32) << 16),
+                    ),
+                );
             } else {
-                SetTextColor(hdc, RGB(txt_r, txt_g, txt_b));
+                SetTextColor(
+                    hdc,
+                    COLORREF((txt_r as u32) | ((txt_g as u32) << 8) | ((txt_b as u32) << 16)),
+                );
             }
 
             let display_label = apply_text_caps(label, &config.text.caps);
@@ -509,7 +509,6 @@ unsafe fn render_keycaps_gdi(
 
             x += label_w;
 
-            // Separator
             if i < parts.len() - 1 {
                 if is_seq {
                     x += 8;
@@ -517,9 +516,12 @@ unsafe fn render_keycaps_gdi(
                     let sep_w = measure_text_width_gdi(hdc, "+");
                     let sep_x = x + 4;
                     let sep_y = y + padding_y;
-                    SetTextColor(hdc, RGB(140, 140, 153));
+                    SetTextColor(hdc, COLORREF((140u32) | ((140u32) << 8) | ((153u32) << 16)));
                     TextOutW(hdc, sep_x, sep_y, &"+".encode_utf16().collect::<Vec<u16>>());
-                    SetTextColor(hdc, RGB(txt_r, txt_g, txt_b));
+                    SetTextColor(
+                        hdc,
+                        COLORREF((txt_r as u32) | ((txt_g as u32) << 8) | ((txt_b as u32) << 16)),
+                    );
                     x += sep_w + 16;
                 }
             }
@@ -534,6 +536,7 @@ unsafe fn render_keycaps_gdi(
 
 #[cfg(target_os = "windows")]
 unsafe fn measure_text_width_gdi(hdc: windows::Win32::Graphics::Gdi::HDC, label: &str) -> i32 {
+    use windows::Win32::Foundation::SIZE;
     use windows::Win32::Graphics::Gdi::*;
     let mut size: SIZE = std::mem::zeroed();
     let utf16: Vec<u16> = label.encode_utf16().collect();

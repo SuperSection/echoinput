@@ -303,6 +303,7 @@ mod tests {
         }
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn test_shift_a_is_character() {
         let mut proc = DefaultEventProcessor::new(ProcessorConfig {
@@ -323,6 +324,7 @@ mod tests {
         }
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn test_a_is_character() {
         let mut proc = DefaultEventProcessor::new(ProcessorConfig {
@@ -342,6 +344,7 @@ mod tests {
         }
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn test_capslock_a_is_character_uppercase() {
         let mut proc = DefaultEventProcessor::new(ProcessorConfig {
@@ -362,6 +365,7 @@ mod tests {
         }
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn test_capslock_shift_a_is_character_lowercase() {
         let mut proc = DefaultEventProcessor::new(ProcessorConfig {
@@ -383,6 +387,7 @@ mod tests {
         }
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn test_shift_1_is_character() {
         let mut proc = DefaultEventProcessor::new(ProcessorConfig {
@@ -403,6 +408,7 @@ mod tests {
         }
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn test_shift_0_is_character() {
         let mut proc = DefaultEventProcessor::new(ProcessorConfig {
@@ -423,6 +429,7 @@ mod tests {
         }
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn test_shift_leftbracket_is_character() {
         let mut proc = DefaultEventProcessor::new(ProcessorConfig {
