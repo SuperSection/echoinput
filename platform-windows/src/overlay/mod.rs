@@ -190,8 +190,8 @@ fn run_windows_overlay(
 
         let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA);
 
-        ShowWindow(hwnd, SW_SHOWNA);
-        UpdateWindow(hwnd);
+        let _ = ShowWindow(hwnd, SW_SHOWNA);
+        let _ = UpdateWindow(hwnd);
 
         let mut config = initial_config;
         let mut current_combos: Vec<ShortcutCombo> = Vec::new();
@@ -211,7 +211,7 @@ fn run_windows_overlay(
                     running = false;
                     break;
                 }
-                TranslateMessage(&msg);
+                let _ = TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
 
@@ -274,7 +274,7 @@ fn run_windows_overlay(
             std::thread::sleep(Duration::from_millis(8));
         }
 
-        DestroyWindow(hwnd);
+        let _ = DestroyWindow(hwnd);
     }
 
     Ok(())
@@ -333,7 +333,7 @@ unsafe fn render_frame(
         bottom: screen_h,
     };
     FillRect(hdc_mem, &empty_rect, clear_brush);
-    DeleteObject(clear_brush);
+    let _ = DeleteObject(clear_brush);
 
     render_keycaps_gdi(hdc_mem, combos, config, screen_w, screen_h);
 
@@ -363,8 +363,8 @@ unsafe fn render_frame(
     );
 
     SelectObject(hdc_mem, old_bitmap);
-    DeleteObject(hbitmap);
-    DeleteDC(hdc_mem);
+    let _ = DeleteObject(hbitmap);
+    let _ = DeleteDC(hdc_mem);
     ReleaseDC(None, hdc_screen);
 }
 
@@ -470,7 +470,7 @@ unsafe fn render_keycaps_gdi(
             let old_brush = SelectObject(hdc, brush);
             let old_pen = SelectObject(hdc, pen);
 
-            RoundRect(
+            let _ = RoundRect(
                 hdc,
                 x,
                 y,
@@ -482,8 +482,8 @@ unsafe fn render_keycaps_gdi(
 
             SelectObject(hdc, old_pen);
             SelectObject(hdc, old_brush);
-            DeleteObject(brush);
-            DeleteObject(pen);
+            let _ = DeleteObject(brush);
+            let _ = DeleteObject(pen);
 
             if is_mod && config.colors.highlight_modifiers {
                 SetTextColor(
@@ -502,7 +502,7 @@ unsafe fn render_keycaps_gdi(
             let display_label = apply_text_caps(label, &config.text.caps);
             let text_x = x + padding_x;
             let text_y = y + padding_y;
-            TextOutW(
+            let _ = TextOutW(
                 hdc,
                 text_x,
                 text_y,
@@ -519,7 +519,7 @@ unsafe fn render_keycaps_gdi(
                     let sep_x = x + 4;
                     let sep_y = y + padding_y;
                     SetTextColor(hdc, COLORREF((140u32) | ((140u32) << 8) | ((153u32) << 16)));
-                    TextOutW(hdc, sep_x, sep_y, &"+".encode_utf16().collect::<Vec<u16>>());
+                    let _ = TextOutW(hdc, sep_x, sep_y, &"+".encode_utf16().collect::<Vec<u16>>());
                     SetTextColor(
                         hdc,
                         COLORREF((txt_r as u32) | ((txt_g as u32) << 8) | ((txt_b as u32) << 16)),
@@ -533,7 +533,7 @@ unsafe fn render_keycaps_gdi(
     }
 
     SelectObject(hdc, old_font);
-    DeleteObject(hfont);
+    let _ = DeleteObject(hfont);
 }
 
 #[cfg(target_os = "windows")]
@@ -542,14 +542,14 @@ unsafe fn measure_text_width_gdi(hdc: windows::Win32::Graphics::Gdi::HDC, label:
     use windows::Win32::Graphics::Gdi::*;
     let mut size: SIZE = std::mem::zeroed();
     let utf16: Vec<u16> = label.encode_utf16().collect();
-    GetTextExtentPoint32W(hdc, &utf16, &mut size);
+    let _ = GetTextExtentPoint32W(hdc, &utf16, &mut size);
     size.cx
 }
 
 #[cfg(target_os = "windows")]
 unsafe fn hide_window(hwnd: windows::Win32::Foundation::HWND) {
     use windows::Win32::UI::WindowsAndMessaging::*;
-    ShowWindow(hwnd, SW_HIDE);
+    let _ = ShowWindow(hwnd, SW_HIDE);
 }
 
 #[cfg(not(target_os = "windows"))]

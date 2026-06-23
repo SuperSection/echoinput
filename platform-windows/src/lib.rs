@@ -184,7 +184,7 @@ fn run_windows_hook(
                 if msg.message == WM_QUIT {
                     break;
                 }
-                TranslateMessage(&msg);
+                let _ = TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
 
