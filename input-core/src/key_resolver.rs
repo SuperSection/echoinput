@@ -1,6 +1,4 @@
-#[cfg(target_os = "linux")]
 use crate::events::ModifierState;
-#[cfg(target_os = "linux")]
 use crate::keys::VirtualKey;
 #[cfg(target_os = "linux")]
 use xkbcommon::xkb;
