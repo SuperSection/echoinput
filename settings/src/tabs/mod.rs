@@ -1,7 +1,7 @@
 //! Settings tab modules.
 
-pub mod general;
-pub mod position;
-pub mod keycap;
-pub mod display;
 pub mod about;
+pub mod display;
+pub mod general;
+pub mod keycap;
+pub mod position;

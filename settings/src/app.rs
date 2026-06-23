@@ -1,8 +1,11 @@
 //! Main SettingsApp implementation.
 
-use crate::tabs::{general, position, keycap, display, about};
+use crate::tabs::{about, display, general, keycap, position};
 use crate::theme::Theme;
-use eframe::egui::{Align2, Align, ComboBox, Context, FontId, Frame, Layout, Margin, RichText, Stroke, TextEdit, Ui, Vec2};
+use eframe::egui::{
+    Align, Align2, ComboBox, Context, FontId, Frame, Layout, Margin, RichText, Stroke, TextEdit,
+    Ui, Vec2,
+};
 use input_core::config::FileConfig;
 use input_core::presets::ThemePreset;
 use std::time::Instant;
@@ -27,7 +30,13 @@ impl SettingsTab {
         }
     }
     pub fn all() -> &'static [SettingsTab] {
-        &[Self::General, Self::Position, Self::Keycap, Self::Display, Self::About]
+        &[
+            Self::General,
+            Self::Position,
+            Self::Keycap,
+            Self::Display,
+            Self::About,
+        ]
     }
 }
 
@@ -230,19 +239,13 @@ impl eframe::App for SettingsApp {
 
         // ── Content Panel ──
         eframe::egui::CentralPanel::default()
-            .frame(
-                Frame::NONE
-                    .fill(theme.bg)
-                    .inner_margin(Margin::same(16)),
-            )
-            .show(ctx, |ui| {
-                match self.active_tab {
-                    SettingsTab::General => general::render_general_tab(ui, &theme, ctx, self),
-                    SettingsTab::Position => position::render_position_tab(ui, &theme, ctx, self),
-                    SettingsTab::Keycap => keycap::render_keycap_tab(ui, &theme, ctx, self),
-                    SettingsTab::Display => display::render_display_tab(ui, &theme, ctx, self),
-                    SettingsTab::About => about::render_about_tab(ui, &theme, ctx, self),
-                }
+            .frame(Frame::NONE.fill(theme.bg).inner_margin(Margin::same(16)))
+            .show(ctx, |ui| match self.active_tab {
+                SettingsTab::General => general::render_general_tab(ui, &theme, ctx, self),
+                SettingsTab::Position => position::render_position_tab(ui, &theme, ctx, self),
+                SettingsTab::Keycap => keycap::render_keycap_tab(ui, &theme, ctx, self),
+                SettingsTab::Display => display::render_display_tab(ui, &theme, ctx, self),
+                SettingsTab::About => about::render_about_tab(ui, &theme, ctx, self),
             });
     }
 }
@@ -271,9 +274,11 @@ pub fn card<F: FnOnce(&mut Ui)>(ui: &mut Ui, theme: &Theme, content: F) -> efram
         .corner_radius(eframe::egui::CornerRadius::same(8))
         .stroke(Stroke::new(0.5, theme.border))
         .inner_margin(Margin::same(12));
-    frame.show(ui, |ui| {
-        content(ui);
-    }).response
+    frame
+        .show(ui, |ui| {
+            content(ui);
+        })
+        .response
 }
 
 pub fn labeled_slider(
@@ -296,7 +301,11 @@ pub fn labeled_slider(
         });
     });
     ui.spacing_mut().slider_width = ui.available_width();
-    ui.add(eframe::egui::Slider::new(value, range).suffix(suffix).show_value(false));
+    ui.add(
+        eframe::egui::Slider::new(value, range)
+            .suffix(suffix)
+            .show_value(false),
+    );
 }
 
 pub fn labeled_slider_f64(
@@ -319,7 +328,11 @@ pub fn labeled_slider_f64(
         });
     });
     ui.spacing_mut().slider_width = ui.available_width();
-    ui.add(eframe::egui::Slider::new(value, range).suffix(suffix).show_value(false));
+    ui.add(
+        eframe::egui::Slider::new(value, range)
+            .suffix(suffix)
+            .show_value(false),
+    );
 }
 
 pub fn dropdown(
@@ -334,7 +347,11 @@ pub fn dropdown(
         ui.label(RichText::new(label).color(theme.text_dim).size(13.0));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ComboBox::from_id_salt(id)
-                .selected_text(RichText::new(options[*selected]).color(theme.text).size(13.0))
+                .selected_text(
+                    RichText::new(options[*selected])
+                        .color(theme.text)
+                        .size(13.0),
+                )
                 .width(130.0)
                 .show_ui(ui, |ui| {
                     for (i, &opt) in options.iter().enumerate() {
@@ -355,7 +372,8 @@ pub fn color_row(ui: &mut Ui, theme: &Theme, label: &str, value: &mut String) {
                     let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
                     let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
                     let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
-                    let (rect, _) = ui.allocate_exact_size(Vec2::new(14.0, 14.0), eframe::egui::Sense::hover());
+                    let (rect, _) =
+                        ui.allocate_exact_size(Vec2::new(14.0, 14.0), eframe::egui::Sense::hover());
                     ui.painter().rect_filled(
                         rect,
                         eframe::egui::CornerRadius::same(3),
@@ -396,24 +414,20 @@ pub fn save_bar(ui: &mut Ui, theme: &Theme, ctx: &Context, app: &mut SettingsApp
     frame.show(ui, |ui| {
         ui.horizontal(|ui| {
             let save_btn = ui.add(
-                eframe::egui::Button::new(
-                    RichText::new("Save").size(13.0).strong(),
-                )
-                .fill(theme.accent)
-                .corner_radius(eframe::egui::CornerRadius::same(6))
-                .min_size(Vec2::new(80.0, 30.0)),
+                eframe::egui::Button::new(RichText::new("Save").size(13.0).strong())
+                    .fill(theme.accent)
+                    .corner_radius(eframe::egui::CornerRadius::same(6))
+                    .min_size(Vec2::new(80.0, 30.0)),
             );
             if save_btn.clicked() {
                 app.save();
             }
 
             let close_btn = ui.add(
-                eframe::egui::Button::new(
-                    RichText::new("Save & Close").size(13.0),
-                )
-                .fill(theme.bg_hover)
-                .corner_radius(eframe::egui::CornerRadius::same(6))
-                .min_size(Vec2::new(100.0, 30.0)),
+                eframe::egui::Button::new(RichText::new("Save & Close").size(13.0))
+                    .fill(theme.bg_hover)
+                    .corner_radius(eframe::egui::CornerRadius::same(6))
+                    .min_size(Vec2::new(100.0, 30.0)),
             );
             if close_btn.clicked() {
                 app.sync_to_config();
@@ -435,11 +449,7 @@ pub fn save_bar(ui: &mut Ui, theme: &Theme, ctx: &Context, app: &mut SettingsApp
                         eframe::egui::Color32::from_rgb(255, 100, 100)
                     };
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.label(
-                            RichText::new(&app.save_status)
-                                .color(color)
-                                .size(12.0),
-                        );
+                        ui.label(RichText::new(&app.save_status).color(color).size(12.0));
                     });
                 } else {
                     app.save_status.clear();

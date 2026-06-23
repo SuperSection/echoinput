@@ -15,9 +15,7 @@ use std::time::{Duration, Instant};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Initialize logging
-    tracing_subscriber::fmt()
-        .with_env_filter("debug")
-        .init();
+    tracing_subscriber::fmt().with_env_filter("debug").init();
 
     // Create capture
     let mut capture = platform_linux::evdev_capture::EvdevCapture::new()?;
@@ -93,6 +91,9 @@ async fn main() -> anyhow::Result<()> {
                                         "  [raw #{}] {} {:?} (scancode: {})",
                                         raw_count, kbd.key, kbd.state, kbd.native_code
                                     );
+                                }
+                                input_core::events::ProcessedEvent::Character(text) => {
+                                    println!("  [char] {}", text);
                                 }
                             }
                         }

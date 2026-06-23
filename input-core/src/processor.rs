@@ -1,4 +1,5 @@
 use crate::events::*;
+use crate::key_resolver::KeyResolver;
 use crate::keys::VirtualKey;
 use crate::traits::{EventProcessor, ProcessorConfig};
 use std::collections::VecDeque;
@@ -7,7 +8,7 @@ use std::time::Instant;
 /// Default event processor implementation.
 ///
 /// Handles modifier tracking, shortcut grouping, deduplication,
-/// and history management.
+/// history management, and xkb-based character resolution.
 pub struct DefaultEventProcessor {
     /// Current modifier state.
     modifiers: ModifierState,
@@ -21,6 +22,8 @@ pub struct DefaultEventProcessor {
     last_event_time: Option<Instant>,
     /// Last emitted shortcut for deduplication.
     last_shortcut: Option<ShortcutCombo>,
+    /// XKB key resolver for translating keys to characters.
+    resolver: KeyResolver,
 }
 
 impl DefaultEventProcessor {
@@ -32,7 +35,26 @@ impl DefaultEventProcessor {
             config,
             last_event_time: None,
             last_shortcut: None,
+            resolver: KeyResolver::new(),
         }
+    }
+
+    /// Create with a pre-configured key resolver (e.g., from Wayland compositor keymap).
+    pub fn with_resolver(config: ProcessorConfig, resolver: KeyResolver) -> Self {
+        Self {
+            modifiers: ModifierState::default(),
+            held_keys: Vec::new(),
+            history: VecDeque::with_capacity(config.history_length),
+            config,
+            last_event_time: None,
+            last_shortcut: None,
+            resolver,
+        }
+    }
+
+    /// Replace the key resolver (e.g., when compositor sends a new keymap).
+    pub fn set_resolver(&mut self, resolver: KeyResolver) {
+        self.resolver = resolver;
     }
 
     fn update_modifier(&mut self, key: VirtualKey, pressed: bool) {
@@ -44,13 +66,11 @@ impl DefaultEventProcessor {
                 self.modifiers.super_key = pressed
             }
             VirtualKey::CapsLock => {
-                // CapsLock toggles on press (not release)
                 if pressed {
                     self.modifiers.capslock = !self.modifiers.capslock;
                 }
             }
             VirtualKey::NumpadLock => {
-                // NumLock toggles on press (not release)
                 if pressed {
                     self.modifiers.numlock = !self.modifiers.numlock;
                 }
@@ -77,7 +97,6 @@ impl DefaultEventProcessor {
     }
 
     fn add_to_history(&mut self, combo: ShortcutCombo) {
-        // Deduplication: skip if same shortcut within window
         if let (Some(ref last), Some(last_time)) = (&self.last_shortcut, self.last_event_time) {
             if *last == combo && last_time.elapsed() < self.config.dedup_window {
                 return;
@@ -96,6 +115,42 @@ impl DefaultEventProcessor {
     /// Build a ShortcutCombo from current modifier state and an optional key.
     fn make_combo(&self, key: Option<VirtualKey>) -> ShortcutCombo {
         ShortcutCombo::new(self.modifiers, key)
+    }
+
+    /// Determine if a key+modifier combination should be treated as a character event.
+    ///
+    /// Character events display only the resolved symbol (e.g., "A", "!", "{").
+    /// Shortcut events display modifier combinations (e.g., "Ctrl + C").
+    fn is_character_event(&self, key: &VirtualKey) -> bool {
+        // Ctrl + anything → always a shortcut
+        if self.modifiers.ctrl {
+            return false;
+        }
+        // Super + anything → always a shortcut
+        if self.modifiers.super_key {
+            return false;
+        }
+
+        // Use xkb to check if the key produces a printable character
+        self.resolver.is_printable(key, &self.modifiers)
+    }
+
+    /// Resolve a key to its display representation.
+    ///
+    /// Uses xkb for character resolution, with fallbacks for numpad keys
+    /// (navigation labels when NumLock is off) and non-printable keys.
+    fn resolve_key(&self, key: &VirtualKey) -> String {
+        if let Some(text) = self.resolver.resolve(key, &self.modifiers) {
+            return text;
+        }
+        // xkb returned None — use fallback labels
+        // Numpad without NumLock: show navigation actions
+        if !self.modifiers.numlock {
+            if let Some(nav_label) = key.numlock_off_label() {
+                return nav_label;
+            }
+        }
+        key.label()
     }
 }
 
@@ -121,28 +176,35 @@ impl EventProcessor for DefaultEventProcessor {
                 }
 
                 if pressed {
-                    // Track held non-modifier keys
                     if !self.held_keys.contains(&key) {
                         self.held_keys.push(key);
                     }
 
                     if self.config.group_shortcuts && !self.modifiers.is_empty() {
-                        // Grouped mode: emit shortcut when modifier+key
-                        let combo = self.make_combo(Some(key));
-                        self.add_to_history(combo.clone());
+                        if self.is_character_event(&key) {
+                            // Character event with modifiers: only show the resolved symbol
+                            let text = self.resolve_key(&key);
+                            let combo = ShortcutCombo::character(key, text);
+                            out.push(ProcessedEvent::Shortcut(combo));
+                        } else {
+                            // Shortcut event: show modifier + key
+                            let combo = self.make_combo(Some(key));
+                            self.add_to_history(combo.clone());
+                            out.push(ProcessedEvent::Shortcut(combo));
+                        }
+                    } else if self.config.group_shortcuts && self.modifiers.is_empty() {
+                        // No modifiers — resolve the character
+                        let text = self.resolve_key(&key);
+                        let combo = ShortcutCombo::character(key, text);
                         out.push(ProcessedEvent::Shortcut(combo));
                     } else {
-                        // Raw mode: emit individual key events
                         out.push(ProcessedEvent::RawKey(kbd_event));
                     }
                 } else {
-                    // Key released
                     self.held_keys.retain(|k| *k != key);
                 }
             }
-            InputEvent::Mouse(_) => {
-                // Mouse events pass through for future implementation
-            }
+            InputEvent::Mouse(_) => {}
         }
 
         out
@@ -173,7 +235,6 @@ impl EventProcessor for DefaultEventProcessor {
 
     fn update_config(&mut self, config: ProcessorConfig) {
         self.config = config;
-        // Trim history if new length is smaller
         while self.history.len() > self.config.history_length {
             self.history.pop_back();
         }
@@ -224,13 +285,12 @@ mod tests {
     }
 
     #[test]
-    fn test_shortcut_grouping() {
+    fn test_ctrl_c_is_shortcut() {
         let mut proc = DefaultEventProcessor::new(ProcessorConfig {
             group_shortcuts: true,
             ..Default::default()
         });
 
-        // Ctrl+C
         proc.process(key_press(VirtualKey::ControlLeft));
         let events = proc.process(key_press(VirtualKey::C));
 
@@ -241,7 +301,147 @@ mod tests {
                 assert_eq!(combo.key, Some(VirtualKey::C));
                 assert_eq!(combo.display, "Ctrl + C");
             }
-            _ => panic!("Expected Shortcut event"),
+            _ => panic!("Expected Shortcut event, got {:?}", events[0]),
+        }
+    }
+
+    #[test]
+    fn test_shift_a_is_character() {
+        let mut proc = DefaultEventProcessor::new(ProcessorConfig {
+            group_shortcuts: true,
+            ..Default::default()
+        });
+
+        proc.process(key_press(VirtualKey::ShiftLeft));
+        let events = proc.process(key_press(VirtualKey::A));
+
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            ProcessedEvent::Shortcut(combo) => {
+                assert_eq!(combo.resolved_text.as_deref(), Some("A"));
+                assert_eq!(combo.key, Some(VirtualKey::A));
+            }
+            _ => panic!("Expected Shortcut event, got {:?}", events[0]),
+        }
+    }
+
+    #[test]
+    fn test_a_is_character() {
+        let mut proc = DefaultEventProcessor::new(ProcessorConfig {
+            group_shortcuts: true,
+            ..Default::default()
+        });
+
+        let events = proc.process(key_press(VirtualKey::A));
+
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            ProcessedEvent::Shortcut(combo) => {
+                assert_eq!(combo.resolved_text.as_deref(), Some("a"));
+                assert_eq!(combo.key, Some(VirtualKey::A));
+            }
+            _ => panic!("Expected Shortcut event, got {:?}", events[0]),
+        }
+    }
+
+    #[test]
+    fn test_capslock_a_is_character_uppercase() {
+        let mut proc = DefaultEventProcessor::new(ProcessorConfig {
+            group_shortcuts: true,
+            ..Default::default()
+        });
+
+        proc.process(key_press(VirtualKey::CapsLock));
+        let events = proc.process(key_press(VirtualKey::A));
+
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            ProcessedEvent::Shortcut(combo) => {
+                assert_eq!(combo.resolved_text.as_deref(), Some("A"));
+                assert_eq!(combo.key, Some(VirtualKey::A));
+            }
+            _ => panic!("Expected Shortcut event, got {:?}", events[0]),
+        }
+    }
+
+    #[test]
+    fn test_capslock_shift_a_is_character_lowercase() {
+        let mut proc = DefaultEventProcessor::new(ProcessorConfig {
+            group_shortcuts: true,
+            ..Default::default()
+        });
+
+        proc.process(key_press(VirtualKey::CapsLock));
+        proc.process(key_press(VirtualKey::ShiftLeft));
+        let events = proc.process(key_press(VirtualKey::A));
+
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            ProcessedEvent::Shortcut(combo) => {
+                assert_eq!(combo.resolved_text.as_deref(), Some("a"));
+                assert_eq!(combo.key, Some(VirtualKey::A));
+            }
+            _ => panic!("Expected Shortcut event, got {:?}", events[0]),
+        }
+    }
+
+    #[test]
+    fn test_shift_1_is_character() {
+        let mut proc = DefaultEventProcessor::new(ProcessorConfig {
+            group_shortcuts: true,
+            ..Default::default()
+        });
+
+        proc.process(key_press(VirtualKey::ShiftLeft));
+        let events = proc.process(key_press(VirtualKey::Key1));
+
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            ProcessedEvent::Shortcut(combo) => {
+                assert_eq!(combo.resolved_text.as_deref(), Some("!"));
+                assert_eq!(combo.key, Some(VirtualKey::Key1));
+            }
+            _ => panic!("Expected Shortcut event, got {:?}", events[0]),
+        }
+    }
+
+    #[test]
+    fn test_shift_0_is_character() {
+        let mut proc = DefaultEventProcessor::new(ProcessorConfig {
+            group_shortcuts: true,
+            ..Default::default()
+        });
+
+        proc.process(key_press(VirtualKey::ShiftLeft));
+        let events = proc.process(key_press(VirtualKey::Key0));
+
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            ProcessedEvent::Shortcut(combo) => {
+                assert_eq!(combo.resolved_text.as_deref(), Some(")"));
+                assert_eq!(combo.key, Some(VirtualKey::Key0));
+            }
+            _ => panic!("Expected Shortcut event, got {:?}", events[0]),
+        }
+    }
+
+    #[test]
+    fn test_shift_leftbracket_is_character() {
+        let mut proc = DefaultEventProcessor::new(ProcessorConfig {
+            group_shortcuts: true,
+            ..Default::default()
+        });
+
+        proc.process(key_press(VirtualKey::ShiftLeft));
+        let events = proc.process(key_press(VirtualKey::LeftBracket));
+
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            ProcessedEvent::Shortcut(combo) => {
+                assert_eq!(combo.resolved_text.as_deref(), Some("{"));
+                assert_eq!(combo.key, Some(VirtualKey::LeftBracket));
+            }
+            _ => panic!("Expected Shortcut event, got {:?}", events[0]),
         }
     }
 
@@ -254,13 +454,11 @@ mod tests {
             ..Default::default()
         });
 
-        // Ctrl+C
         proc.process(key_press(VirtualKey::ControlLeft));
         proc.process(key_press(VirtualKey::C));
         proc.process(key_release(VirtualKey::C));
         proc.process(key_release(VirtualKey::ControlLeft));
 
-        // Ctrl+V
         proc.process(key_press(VirtualKey::ControlLeft));
         proc.process(key_press(VirtualKey::V));
         proc.process(key_release(VirtualKey::V));

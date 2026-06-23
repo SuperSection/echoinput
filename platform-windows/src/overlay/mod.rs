@@ -1,16 +1,15 @@
 use input_core::events::ShortcutCombo;
 use input_core::ipc::MessageBus;
-use input_core::overlay::{
-    DisplayEvent, OverlayConfig, TextCaps, TextVariant,
-};
+use input_core::overlay::{DisplayEvent, OverlayConfig, TextCaps, TextVariant};
 use platform::overlay::{OverlayRenderer, OverlayRendererFactory};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{info, warn};
 
+#[allow(dead_code)]
 enum RendererCommand {
-    Update(()),
+    Update(DisplayEvent),
     Stop,
 }
 
@@ -23,21 +22,37 @@ pub struct WindowsRenderer {
 
 impl WindowsRenderer {
     pub fn new(bus: MessageBus) -> Self {
-        Self { bus: Some(bus), cmd_tx: None, handle: None, shutdown: None }
+        Self {
+            bus: Some(bus),
+            cmd_tx: None,
+            handle: None,
+            shutdown: None,
+        }
     }
 
     pub fn with_shutdown(bus: MessageBus, shutdown: Arc<AtomicBool>) -> Self {
-        Self { bus: Some(bus), cmd_tx: None, handle: None, shutdown: Some(shutdown) }
+        Self {
+            bus: Some(bus),
+            cmd_tx: None,
+            handle: None,
+            shutdown: Some(shutdown),
+        }
     }
 }
 
 #[async_trait::async_trait]
 impl OverlayRenderer for WindowsRenderer {
     async fn start(&mut self, config: OverlayConfig) -> anyhow::Result<()> {
-        let bus = self.bus.take().ok_or_else(|| anyhow::anyhow!("No MessageBus"))?;
+        let bus = self
+            .bus
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("No MessageBus"))?;
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         self.cmd_tx = Some(cmd_tx);
-        let shutdown = self.shutdown.take().unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
+        let shutdown = self
+            .shutdown
+            .take()
+            .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
 
         let handle = tokio::task::spawn_blocking(move || {
             #[cfg(target_os = "windows")]
@@ -69,33 +84,43 @@ impl OverlayRenderer for WindowsRenderer {
         Ok(())
     }
 
-    fn update(&self, _event: DisplayEvent) -> anyhow::Result<()> {
+    fn update(&self, event: DisplayEvent) -> anyhow::Result<()> {
         if let Some(tx) = &self.cmd_tx {
-            tx.send(RendererCommand::Update(()))
+            tx.send(RendererCommand::Update(event))
                 .map_err(|e| anyhow::anyhow!("{}", e))?;
         }
         Ok(())
     }
 
-    fn is_running(&self) -> bool { self.handle.is_some() }
-    fn name(&self) -> &str { "WindowsRenderer" }
+    fn is_running(&self) -> bool {
+        self.handle.is_some()
+    }
+    fn name(&self) -> &str {
+        "WindowsRenderer"
+    }
 }
 
 pub struct WindowsRendererFactory;
 
 impl WindowsRendererFactory {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl Default for WindowsRendererFactory {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl OverlayRendererFactory for WindowsRendererFactory {
     fn create(&self, bus: MessageBus) -> Box<dyn OverlayRenderer> {
         Box::new(WindowsRenderer::new(bus))
     }
-    fn platform_name(&self) -> &str { "windows" }
+    fn platform_name(&self) -> &str {
+        "windows"
+    }
 }
 
 // ── Hex color parsing ──────────────────────────────────────────
@@ -153,7 +178,10 @@ fn run_windows_overlay(
             class_name,
             windows::core::w!("EchoInput Overlay"),
             WS_POPUP,
-            0, 0, screen_w, screen_h,
+            0,
+            0,
+            screen_w,
+            screen_h,
             None,
             None,
             GetModuleHandleW(None),
@@ -301,7 +329,12 @@ unsafe fn render_frame(
 
     // Clear to transparent
     let clear_brush = CreateSolidBrush(COLORREF(0x00000000));
-    let empty_rect = RECT { left: 0, top: 0, right: screen_w, bottom: screen_h };
+    let empty_rect = RECT {
+        left: 0,
+        top: 0,
+        right: screen_w,
+        bottom: screen_h,
+    };
     FillRect(hdc_mem, &empty_rect, clear_brush);
     DeleteObject(clear_brush);
 
@@ -310,7 +343,10 @@ unsafe fn render_frame(
 
     // Present with per-pixel alpha
     let mut ppt_dst = POINT { x: 0, y: 0 };
-    let mut size = SIZE { cx: screen_w, cy: screen_h };
+    let mut size = SIZE {
+        cx: screen_w,
+        cy: screen_h,
+    };
     let mut ppt_src = POINT { x: 0, y: 0 };
     let blend = BLENDFUNCTION {
         BlendOp: AC_SRC_OVER,
@@ -319,7 +355,17 @@ unsafe fn render_frame(
         AlphaFormat: AC_SRC_ALPHA,
     };
 
-    let _ = UpdateLayeredWindow(hwnd, hdc_screen, None, Some(&size), hdc_mem, Some(&ppt_src), 0, Some(&blend), ULW_ALPHA);
+    let _ = UpdateLayeredWindow(
+        hwnd,
+        hdc_screen,
+        None,
+        Some(&size),
+        hdc_mem,
+        Some(&ppt_src),
+        0,
+        Some(&blend),
+        ULW_ALPHA,
+    );
 
     // Cleanup
     SelectObject(hdc_mem, old_bitmap);
@@ -353,9 +399,18 @@ unsafe fn render_keycaps_gdi(
     // Create font
     let font_name = windows::core::w!("Segoe UI");
     let hfont = CreateFontW(
-        font_size, 0, 0, 0, FW_BOLD.0 as i32, 0, 0, 0,
-        DEFAULT_CHARSET.0 as u32, OUT_DEFAULT_PRECIS.0 as u32,
-        CLIP_DEFAULT_PRECIS.0 as u32, CLEARTYPE_QUALITY.0 as u32,
+        font_size,
+        0,
+        0,
+        0,
+        FW_BOLD.0 as i32,
+        0,
+        0,
+        0,
+        DEFAULT_CHARSET.0 as u32,
+        OUT_DEFAULT_PRECIS.0 as u32,
+        CLIP_DEFAULT_PRECIS.0 as u32,
+        CLEARTYPE_QUALITY.0 as u32,
         DEFAULT_PITCH.0 as u32 | FF_DONTCARE.0 as u32,
         font_name,
     );
@@ -370,14 +425,17 @@ unsafe fn render_keycaps_gdi(
             config.margin_y as i32
         }
         _ => {
-            let content_h = visible.len() as i32 * keycap_h + (visible.len().saturating_sub(1)) as i32 * 8;
+            let content_h =
+                visible.len() as i32 * keycap_h + (visible.len().saturating_sub(1)) as i32 * 8;
             (screen_h - content_h - config.margin_y as i32).max(0)
         }
     };
 
     for (row_idx, combo) in visible.iter().enumerate() {
         let parts = combo_to_key_parts(combo, &config.text.variant);
-        if parts.is_empty() { continue; }
+        if parts.is_empty() {
+            continue;
+        }
 
         let is_seq = combo.is_sequence();
         let mut x = match config.position {
@@ -395,21 +453,37 @@ unsafe fn render_keycaps_gdi(
             let label_w = measure_text_width_gdi(hdc, label) + padding_x * 2;
             let is_mod = is_modifier_label(label);
 
-            let bg = if is_mod && config.colors.highlight_modifiers { mod_bg } else { keycap_bg };
+            let bg = if is_mod && config.colors.highlight_modifiers {
+                mod_bg
+            } else {
+                keycap_bg
+            };
             let bg_color = COLORREF((bg as u32) | ((bg as u32) << 8) | ((bg as u32) << 16));
 
             // Draw keycap background
             let brush = CreateSolidBrush(bg_color);
             let pen = if config.border.enabled {
                 let (br, bg2, bb) = parse_hex_color(&config.border.color);
-                CreatePen(PS_SOLID, config.border.width as i32, COLORREF((br as u32) | ((bg2 as u32) << 8) | ((bb as u32) << 16)))
+                CreatePen(
+                    PS_SOLID,
+                    config.border.width as i32,
+                    COLORREF((br as u32) | ((bg2 as u32) << 8) | ((bb as u32) << 16)),
+                )
             } else {
                 CreatePen(PS_SOLID, 0, COLORREF(0))
             };
             let old_brush = SelectObject(hdc, brush);
             let old_pen = SelectObject(hdc, pen);
 
-            RoundRect(hdc, x, y, x + label_w, y + keycap_h, corner_radius, corner_radius);
+            RoundRect(
+                hdc,
+                x,
+                y,
+                x + label_w,
+                y + keycap_h,
+                corner_radius,
+                corner_radius,
+            );
 
             SelectObject(hdc, old_pen);
             SelectObject(hdc, old_brush);
@@ -426,7 +500,12 @@ unsafe fn render_keycaps_gdi(
             let display_label = apply_text_caps(label, &config.text.caps);
             let text_x = x + padding_x;
             let text_y = y + padding_y;
-            TextOutW(hdc, text_x, text_y, &display_label.encode_utf16().collect::<Vec<u16>>());
+            TextOutW(
+                hdc,
+                text_x,
+                text_y,
+                &display_label.encode_utf16().collect::<Vec<u16>>(),
+            );
 
             x += label_w;
 
@@ -477,14 +556,29 @@ unsafe fn hide_window(_hwnd: isize) {}
 #[allow(dead_code)]
 fn combo_to_key_parts(combo: &ShortcutCombo, variant: &TextVariant) -> Vec<String> {
     if combo.is_sequence() {
-        return combo.key_sequence.iter().map(|k| apply_text_variant(&k.label(), variant)).collect();
+        return combo
+            .key_sequence
+            .iter()
+            .map(|k| apply_text_variant(&k.label(), variant))
+            .collect();
     }
     let mut parts = Vec::new();
-    if combo.modifiers.ctrl { parts.push(apply_modifier_label("Ctrl", variant)); }
-    if combo.modifiers.alt { parts.push(apply_modifier_label("Alt", variant)); }
-    if combo.modifiers.shift { parts.push(apply_modifier_label("Shift", variant)); }
-    if combo.modifiers.super_key { parts.push(apply_modifier_label("Super", variant)); }
-    if let Some(key) = &combo.key { parts.push(apply_text_variant(&key.label(), variant)); }
+    if combo.modifiers.ctrl {
+        parts.push(apply_modifier_label("Ctrl", variant));
+    }
+    if combo.modifiers.alt {
+        parts.push(apply_modifier_label("Alt", variant));
+    }
+    if combo.modifiers.shift {
+        parts.push(apply_modifier_label("Shift", variant));
+    }
+    if combo.modifiers.super_key {
+        parts.push(apply_modifier_label("Super", variant));
+    }
+    if let Some(key) = &combo.key {
+        let key_label = ShortcutCombo::get_key_display(&combo.modifiers, key);
+        parts.push(apply_text_variant(&key_label, variant));
+    }
     parts
 }
 
@@ -493,14 +587,23 @@ fn apply_text_variant(label: &str, variant: &TextVariant) -> String {
     match variant {
         TextVariant::Full => label.to_string(),
         TextVariant::Short => shorten_label(label),
-        TextVariant::Icon => if label.len() <= 2 { label.to_string() } else { shorten_label(label) },
+        TextVariant::Icon => {
+            if label.len() <= 2 {
+                label.to_string()
+            } else {
+                shorten_label(label)
+            }
+        }
     }
 }
 
 #[allow(dead_code)]
 fn apply_modifier_label(label: &str, variant: &TextVariant) -> String {
     match variant {
-        TextVariant::Full => match label { "Ctrl" => "Control".to_string(), _ => label.to_string() },
+        TextVariant::Full => match label {
+            "Ctrl" => "Control".to_string(),
+            _ => label.to_string(),
+        },
         TextVariant::Short | TextVariant::Icon => label.to_string(),
     }
 }
@@ -539,5 +642,8 @@ fn shorten_label(label: &str) -> String {
 
 #[allow(dead_code)]
 fn is_modifier_label(label: &str) -> bool {
-    matches!(label, "Ctrl" | "Alt" | "Shift" | "Super" | "Meta" | "Control")
+    matches!(
+        label,
+        "Ctrl" | "Alt" | "Shift" | "Super" | "Meta" | "Control"
+    )
 }

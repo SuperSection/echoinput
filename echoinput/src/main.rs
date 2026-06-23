@@ -87,8 +87,12 @@ fn apply_theme(ctx: &eframe::egui::Context, theme: &Theme) {
 
 fn parse_log_level() -> String {
     let args: Vec<String> = std::env::args().collect();
-    if args.iter().any(|a| a == "--trace") { return "trace".into(); }
-    if args.iter().any(|a| a == "--debug") { return "debug".into(); }
+    if args.iter().any(|a| a == "--trace") {
+        return "trace".into();
+    }
+    if args.iter().any(|a| a == "--debug") {
+        return "debug".into();
+    }
     std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into())
 }
 
@@ -218,6 +222,7 @@ fn run_overlay(config: OverlayConfig) {
                                         }
                                     }
                                     ProcessedEvent::ModifierChange(_) => {}
+                                    ProcessedEvent::Character(_) => {}
                                 }
                             }
                         }
@@ -255,11 +260,10 @@ fn run_overlay(config: OverlayConfig) {
 fn create_platform_components(
     bus: MessageBus,
     shutdown: Arc<AtomicBool>,
-) -> (
-    Box<dyn OverlayRenderer>,
-    Box<dyn KeyboardCaptureProvider>,
-) {
-    use platform_linux::{overlay_wayland::WaylandRenderer, overlay_x11::X11Renderer, evdev_capture::EvdevCapture};
+) -> (Box<dyn OverlayRenderer>, Box<dyn KeyboardCaptureProvider>) {
+    use platform_linux::{
+        evdev_capture::EvdevCapture, overlay_wayland::WaylandRenderer, overlay_x11::X11Renderer,
+    };
 
     let is_wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
 
@@ -271,8 +275,7 @@ fn create_platform_components(
         Box::new(X11Renderer::with_shutdown(bus, shutdown.clone()))
     };
 
-    let capture: Box<dyn KeyboardCaptureProvider> =
-        Box::new(EvdevCapture::with_shutdown(shutdown));
+    let capture: Box<dyn KeyboardCaptureProvider> = Box::new(EvdevCapture::with_shutdown(shutdown));
 
     (renderer, capture)
 }
@@ -281,16 +284,14 @@ fn create_platform_components(
 fn create_platform_components(
     bus: MessageBus,
     shutdown: Arc<AtomicBool>,
-) -> (
-    Box<dyn OverlayRenderer>,
-    Box<dyn KeyboardCaptureProvider>,
-) {
+) -> (Box<dyn OverlayRenderer>, Box<dyn KeyboardCaptureProvider>) {
     use platform_windows::{overlay::WindowsRenderer, WindowsCapture};
 
     let renderer: Box<dyn OverlayRenderer> =
         Box::new(WindowsRenderer::with_shutdown(bus, shutdown.clone()));
-    let capture: Box<dyn KeyboardCaptureProvider> =
-        Box::new(WindowsCapture::with_shutdown(shutdown).expect("Failed to create Windows capture"));
+    let capture: Box<dyn KeyboardCaptureProvider> = Box::new(
+        WindowsCapture::with_shutdown(shutdown).expect("Failed to create Windows capture"),
+    );
 
     (renderer, capture)
 }
@@ -299,10 +300,7 @@ fn create_platform_components(
 fn create_platform_components(
     bus: MessageBus,
     shutdown: Arc<AtomicBool>,
-) -> (
-    Box<dyn OverlayRenderer>,
-    Box<dyn KeyboardCaptureProvider>,
-) {
+) -> (Box<dyn OverlayRenderer>, Box<dyn KeyboardCaptureProvider>) {
     use platform_macos::{overlay::MacRenderer, MacosCapture};
 
     let renderer: Box<dyn OverlayRenderer> =
@@ -358,7 +356,13 @@ impl SettingsTab {
         }
     }
     pub fn all() -> &'static [SettingsTab] {
-        &[Self::General, Self::Position, Self::Keycap, Self::Display, Self::About]
+        &[
+            Self::General,
+            Self::Position,
+            Self::Keycap,
+            Self::Display,
+            Self::About,
+        ]
     }
 }
 
@@ -377,7 +381,15 @@ struct SettingsApp {
     save_status_time: Option<std::time::Instant>,
 }
 
-const POSITIONS: &[&str] = &["BottomCenter", "TopLeft", "TopRight", "TopCenter", "BottomLeft", "BottomRight", "Center"];
+const POSITIONS: &[&str] = &[
+    "BottomCenter",
+    "TopLeft",
+    "TopRight",
+    "TopCenter",
+    "BottomLeft",
+    "BottomRight",
+    "Center",
+];
 const SCALES: &[&str] = &["Small", "Medium", "Large", "ExtraLarge"];
 const THEMES: &[&str] = &["Dark", "Light", "System"];
 const KEYCAP_STYLES: &[&str] = &["Minimal", "Laptop", "LowProfile", "PBT"];
@@ -387,19 +399,55 @@ const TEXT_VARIANTS: &[&str] = &["Full", "Short", "Icon"];
 
 impl SettingsApp {
     fn new(config: FileConfig, theme: Theme) -> Self {
-        let position_index = config.position.as_deref().and_then(|p| POSITIONS.iter().position(|&s| s == p)).unwrap_or(0);
-        let scale_index = config.scale.as_deref().and_then(|s| SCALES.iter().position(|&x| x == s)).unwrap_or(1);
-        let theme_index = config.theme.as_deref().and_then(|t| THEMES.iter().position(|&x| x == t)).unwrap_or(0);
-        let keycap_style_index = config.keycap_style.as_deref().and_then(|s| KEYCAP_STYLES.iter().position(|&x| x == s)).unwrap_or(1);
-        let animation_type_index = config.animation_type.as_deref().and_then(|a| ANIMATION_TYPES.iter().position(|&x| x == a)).unwrap_or(4);
-        let text_caps_index = config.text_caps.as_deref().and_then(|c| TEXT_CAPS.iter().position(|&x| x == c)).unwrap_or(0);
-        let text_variant_index = config.text_variant.as_deref().and_then(|v| TEXT_VARIANTS.iter().position(|&x| x == v)).unwrap_or(0);
+        let position_index = config
+            .position
+            .as_deref()
+            .and_then(|p| POSITIONS.iter().position(|&s| s == p))
+            .unwrap_or(0);
+        let scale_index = config
+            .scale
+            .as_deref()
+            .and_then(|s| SCALES.iter().position(|&x| x == s))
+            .unwrap_or(1);
+        let theme_index = config
+            .theme
+            .as_deref()
+            .and_then(|t| THEMES.iter().position(|&x| x == t))
+            .unwrap_or(0);
+        let keycap_style_index = config
+            .keycap_style
+            .as_deref()
+            .and_then(|s| KEYCAP_STYLES.iter().position(|&x| x == s))
+            .unwrap_or(1);
+        let animation_type_index = config
+            .animation_type
+            .as_deref()
+            .and_then(|a| ANIMATION_TYPES.iter().position(|&x| x == a))
+            .unwrap_or(4);
+        let text_caps_index = config
+            .text_caps
+            .as_deref()
+            .and_then(|c| TEXT_CAPS.iter().position(|&x| x == c))
+            .unwrap_or(0);
+        let text_variant_index = config
+            .text_variant
+            .as_deref()
+            .and_then(|v| TEXT_VARIANTS.iter().position(|&x| x == v))
+            .unwrap_or(0);
 
         Self {
-            config, theme, active_tab: SettingsTab::General,
-            position_index, scale_index, theme_index, keycap_style_index,
-            animation_type_index, text_caps_index, text_variant_index,
-            save_status: String::new(), save_status_time: None,
+            config,
+            theme,
+            active_tab: SettingsTab::General,
+            position_index,
+            scale_index,
+            theme_index,
+            keycap_style_index,
+            animation_type_index,
+            text_caps_index,
+            text_variant_index,
+            save_status: String::new(),
+            save_status_time: None,
         }
     }
 
@@ -431,78 +479,172 @@ impl SettingsApp {
 
     fn section_header(ui: &mut eframe::egui::Ui, theme: &Theme, label: &str) {
         ui.add_space(4.0);
-        let (rect, _) = ui.allocate_exact_size(eframe::egui::vec2(ui.available_width(), 0.0), eframe::egui::Sense::hover());
-        ui.painter().text(rect.min, eframe::egui::Align2::LEFT_CENTER, label, eframe::egui::FontId::proportional(14.0), theme.text_dim);
+        let (rect, _) = ui.allocate_exact_size(
+            eframe::egui::vec2(ui.available_width(), 0.0),
+            eframe::egui::Sense::hover(),
+        );
+        ui.painter().text(
+            rect.min,
+            eframe::egui::Align2::LEFT_CENTER,
+            label,
+            eframe::egui::FontId::proportional(14.0),
+            theme.text_dim,
+        );
         ui.add_space(18.0);
     }
 
-    fn card<F: FnOnce(&mut eframe::egui::Ui)>(ui: &mut eframe::egui::Ui, theme: &Theme, content: F) -> eframe::egui::Response {
+    fn card<F: FnOnce(&mut eframe::egui::Ui)>(
+        ui: &mut eframe::egui::Ui,
+        theme: &Theme,
+        content: F,
+    ) -> eframe::egui::Response {
         let frame = eframe::egui::Frame::NONE
             .fill(theme.bg_card)
             .corner_radius(eframe::egui::CornerRadius::same(8))
             .stroke(eframe::egui::Stroke::new(0.5, theme.border))
             .inner_margin(eframe::egui::Margin::same(12));
-        frame.show(ui, |ui| { content(ui); }).response
+        frame
+            .show(ui, |ui| {
+                content(ui);
+            })
+            .response
     }
 
-    fn labeled_slider(ui: &mut eframe::egui::Ui, theme: &Theme, label: &str, value: &mut f32, range: std::ops::RangeInclusive<f32>, suffix: &str) {
+    fn labeled_slider(
+        ui: &mut eframe::egui::Ui,
+        theme: &Theme,
+        label: &str,
+        value: &mut f32,
+        range: std::ops::RangeInclusive<f32>,
+        suffix: &str,
+    ) {
         ui.horizontal(|ui| {
-            ui.label(eframe::egui::RichText::new(label).color(theme.text_dim).size(13.0));
-            ui.with_layout(eframe::egui::Layout::right_to_left(eframe::egui::Align::Center), |ui| {
-                ui.label(eframe::egui::RichText::new(format!("{:.0}{}", value, suffix)).color(theme.accent).size(13.0).strong());
-            });
+            ui.label(
+                eframe::egui::RichText::new(label)
+                    .color(theme.text_dim)
+                    .size(13.0),
+            );
+            ui.with_layout(
+                eframe::egui::Layout::right_to_left(eframe::egui::Align::Center),
+                |ui| {
+                    ui.label(
+                        eframe::egui::RichText::new(format!("{:.0}{}", value, suffix))
+                            .color(theme.accent)
+                            .size(13.0)
+                            .strong(),
+                    );
+                },
+            );
         });
         ui.spacing_mut().slider_width = ui.available_width();
-        ui.add(eframe::egui::Slider::new(value, range).suffix(suffix).show_value(false));
+        ui.add(
+            eframe::egui::Slider::new(value, range)
+                .suffix(suffix)
+                .show_value(false),
+        );
     }
 
-    fn dropdown(ui: &mut eframe::egui::Ui, _theme: &Theme, id: &str, label: &str, options: &[&str], selected: &mut usize) {
+    fn dropdown(
+        ui: &mut eframe::egui::Ui,
+        _theme: &Theme,
+        id: &str,
+        label: &str,
+        options: &[&str],
+        selected: &mut usize,
+    ) {
         ui.horizontal(|ui| {
-            ui.label(eframe::egui::RichText::new(label).color(_theme.text_dim).size(13.0));
-            ui.with_layout(eframe::egui::Layout::right_to_left(eframe::egui::Align::Center), |ui| {
-                eframe::egui::ComboBox::from_id_salt(id)
-                    .selected_text(eframe::egui::RichText::new(options[*selected]).color(_theme.text).size(13.0))
-                    .width(130.0)
-                    .show_ui(ui, |ui| {
-                        for (i, &opt) in options.iter().enumerate() {
-                            ui.selectable_value(selected, i, eframe::egui::RichText::new(opt).size(13.0));
-                        }
-                    });
-            });
+            ui.label(
+                eframe::egui::RichText::new(label)
+                    .color(_theme.text_dim)
+                    .size(13.0),
+            );
+            ui.with_layout(
+                eframe::egui::Layout::right_to_left(eframe::egui::Align::Center),
+                |ui| {
+                    eframe::egui::ComboBox::from_id_salt(id)
+                        .selected_text(
+                            eframe::egui::RichText::new(options[*selected])
+                                .color(_theme.text)
+                                .size(13.0),
+                        )
+                        .width(130.0)
+                        .show_ui(ui, |ui| {
+                            for (i, &opt) in options.iter().enumerate() {
+                                ui.selectable_value(
+                                    selected,
+                                    i,
+                                    eframe::egui::RichText::new(opt).size(13.0),
+                                );
+                            }
+                        });
+                },
+            );
         });
     }
 
     fn toggle_row(ui: &mut eframe::egui::Ui, _theme: &Theme, label: &str, value: &mut bool) {
         ui.horizontal(|ui| {
-            ui.label(eframe::egui::RichText::new(label).color(_theme.text_dim).size(13.0));
-            ui.with_layout(eframe::egui::Layout::right_to_left(eframe::egui::Align::Center), |ui| {
-                ui.toggle_value(value, "");
-            });
+            ui.label(
+                eframe::egui::RichText::new(label)
+                    .color(_theme.text_dim)
+                    .size(13.0),
+            );
+            ui.with_layout(
+                eframe::egui::Layout::right_to_left(eframe::egui::Align::Center),
+                |ui| {
+                    ui.toggle_value(value, "");
+                },
+            );
         });
     }
 
     fn color_row(ui: &mut eframe::egui::Ui, _theme: &Theme, label: &str, value: &mut String) {
         ui.horizontal(|ui| {
-            ui.label(eframe::egui::RichText::new(label).color(_theme.text_dim).size(13.0));
-            ui.with_layout(eframe::egui::Layout::right_to_left(eframe::egui::Align::Center), |ui| {
-                if let Some(hex) = value.strip_prefix('#') {
-                    if hex.len() >= 6 {
-                        let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
-                        let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
-                        let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
-                        let (rect, _) = ui.allocate_exact_size(eframe::egui::vec2(14.0, 14.0), eframe::egui::Sense::hover());
-                        ui.painter().rect_filled(rect, eframe::egui::CornerRadius::same(3), eframe::egui::Color32::from_rgb(r, g, b));
-                        ui.add_space(4.0);
+            ui.label(
+                eframe::egui::RichText::new(label)
+                    .color(_theme.text_dim)
+                    .size(13.0),
+            );
+            ui.with_layout(
+                eframe::egui::Layout::right_to_left(eframe::egui::Align::Center),
+                |ui| {
+                    if let Some(hex) = value.strip_prefix('#') {
+                        if hex.len() >= 6 {
+                            let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
+                            let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
+                            let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
+                            let (rect, _) = ui.allocate_exact_size(
+                                eframe::egui::vec2(14.0, 14.0),
+                                eframe::egui::Sense::hover(),
+                            );
+                            ui.painter().rect_filled(
+                                rect,
+                                eframe::egui::CornerRadius::same(3),
+                                eframe::egui::Color32::from_rgb(r, g, b),
+                            );
+                            ui.add_space(4.0);
+                        }
                     }
-                }
-                let mut color = value.clone();
-                let response = ui.add(eframe::egui::TextEdit::singleline(&mut color).desired_width(80.0).font(eframe::egui::FontId::monospace(12.0)));
-                if response.changed() { *value = color; }
-            });
+                    let mut color = value.clone();
+                    let response = ui.add(
+                        eframe::egui::TextEdit::singleline(&mut color)
+                            .desired_width(80.0)
+                            .font(eframe::egui::FontId::monospace(12.0)),
+                    );
+                    if response.changed() {
+                        *value = color;
+                    }
+                },
+            );
         });
     }
 
-    fn save_bar(ui: &mut eframe::egui::Ui, theme: &Theme, ctx: &eframe::egui::Context, app: &mut SettingsApp) {
+    fn save_bar(
+        ui: &mut eframe::egui::Ui,
+        theme: &Theme,
+        ctx: &eframe::egui::Context,
+        app: &mut SettingsApp,
+    ) {
         ui.add_space(8.0);
         let frame = eframe::egui::Frame::NONE
             .fill(theme.bg_card)
@@ -511,21 +653,55 @@ impl SettingsApp {
             .inner_margin(eframe::egui::Margin::same(12));
         frame.show(ui, |ui| {
             ui.horizontal(|ui| {
-                let save_btn = ui.add(eframe::egui::Button::new(eframe::egui::RichText::new("Save").size(13.0).strong()).fill(theme.accent).corner_radius(eframe::egui::CornerRadius::same(6)).min_size(eframe::egui::vec2(80.0, 30.0)));
-                if save_btn.clicked() { app.save(); }
-                let close_btn = ui.add(eframe::egui::Button::new(eframe::egui::RichText::new("Save & Close").size(13.0)).fill(theme.bg_hover).corner_radius(eframe::egui::CornerRadius::same(6)).min_size(eframe::egui::vec2(100.0, 30.0)));
+                let save_btn = ui.add(
+                    eframe::egui::Button::new(
+                        eframe::egui::RichText::new("Save").size(13.0).strong(),
+                    )
+                    .fill(theme.accent)
+                    .corner_radius(eframe::egui::CornerRadius::same(6))
+                    .min_size(eframe::egui::vec2(80.0, 30.0)),
+                );
+                if save_btn.clicked() {
+                    app.save();
+                }
+                let close_btn = ui.add(
+                    eframe::egui::Button::new(
+                        eframe::egui::RichText::new("Save & Close").size(13.0),
+                    )
+                    .fill(theme.bg_hover)
+                    .corner_radius(eframe::egui::CornerRadius::same(6))
+                    .min_size(eframe::egui::vec2(100.0, 30.0)),
+                );
                 if close_btn.clicked() {
                     app.sync_to_config();
-                    if app.config.save().is_ok() { ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Close); }
+                    if app.config.save().is_ok() {
+                        ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Close);
+                    }
                 }
                 if !app.save_status.is_empty() {
-                    let show = match app.save_status_time { Some(t) => t.elapsed() < std::time::Duration::from_secs(3), None => false };
+                    let show = match app.save_status_time {
+                        Some(t) => t.elapsed() < std::time::Duration::from_secs(3),
+                        None => false,
+                    };
                     if show {
-                        let color = if app.save_status == "Saved" { theme.success } else { eframe::egui::Color32::from_rgb(255, 100, 100) };
-                        ui.with_layout(eframe::egui::Layout::right_to_left(eframe::egui::Align::Center), |ui| {
-                            ui.label(eframe::egui::RichText::new(&app.save_status).color(color).size(12.0));
-                        });
-                    } else { app.save_status.clear(); }
+                        let color = if app.save_status == "Saved" {
+                            theme.success
+                        } else {
+                            eframe::egui::Color32::from_rgb(255, 100, 100)
+                        };
+                        ui.with_layout(
+                            eframe::egui::Layout::right_to_left(eframe::egui::Align::Center),
+                            |ui| {
+                                ui.label(
+                                    eframe::egui::RichText::new(&app.save_status)
+                                        .color(color)
+                                        .size(12.0),
+                                );
+                            },
+                        );
+                    } else {
+                        app.save_status.clear();
+                    }
                 }
             });
         });
@@ -538,19 +714,45 @@ impl eframe::App for SettingsApp {
 
         // Tab bar
         eframe::egui::TopBottomPanel::top("tab_bar")
-            .frame(eframe::egui::Frame::NONE.fill(theme.bg).stroke(eframe::egui::Stroke::new(0.5, theme.separator)).inner_margin(eframe::egui::Margin::symmetric(16, 0)))
+            .frame(
+                eframe::egui::Frame::NONE
+                    .fill(theme.bg)
+                    .stroke(eframe::egui::Stroke::new(0.5, theme.separator))
+                    .inner_margin(eframe::egui::Margin::symmetric(16, 0)),
+            )
             .show(ctx, |ui| {
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     for &tab in SettingsTab::all() {
                         let is_active = self.active_tab == tab;
-                        let text_color = if is_active { theme.tab_active } else { theme.tab_inactive };
-                        let btn = ui.add(eframe::egui::Button::new(eframe::egui::RichText::new(tab.label()).color(text_color).size(13.0).strong()).fill(eframe::egui::Color32::TRANSPARENT).stroke(eframe::egui::Stroke::NONE));
+                        let text_color = if is_active {
+                            theme.tab_active
+                        } else {
+                            theme.tab_inactive
+                        };
+                        let btn = ui.add(
+                            eframe::egui::Button::new(
+                                eframe::egui::RichText::new(tab.label())
+                                    .color(text_color)
+                                    .size(13.0)
+                                    .strong(),
+                            )
+                            .fill(eframe::egui::Color32::TRANSPARENT)
+                            .stroke(eframe::egui::Stroke::NONE),
+                        );
                         if is_active {
                             let rect = btn.rect;
-                            ui.painter().line_segment([rect.min + eframe::egui::vec2(0.0, rect.height()), rect.max + eframe::egui::vec2(0.0, 0.0)], eframe::egui::Stroke::new(2.0, theme.tab_active));
+                            ui.painter().line_segment(
+                                [
+                                    rect.min + eframe::egui::vec2(0.0, rect.height()),
+                                    rect.max + eframe::egui::vec2(0.0, 0.0),
+                                ],
+                                eframe::egui::Stroke::new(2.0, theme.tab_active),
+                            );
                         }
-                        if btn.clicked() { self.active_tab = tab; }
+                        if btn.clicked() {
+                            self.active_tab = tab;
+                        }
                     }
                 });
                 ui.add_space(2.0);
@@ -624,8 +826,15 @@ impl eframe::App for SettingsApp {
         });
 
         // Save bar
-        eframe::egui::TopBottomPanel::bottom("save_bar").frame(eframe::egui::Frame::NONE.fill(theme.bg).stroke(eframe::egui::Stroke::new(0.5, theme.separator)).inner_margin(eframe::egui::Margin::same(16))).show(ctx, |ui| {
-            Self::save_bar(ui, &theme, ctx, self);
-        });
+        eframe::egui::TopBottomPanel::bottom("save_bar")
+            .frame(
+                eframe::egui::Frame::NONE
+                    .fill(theme.bg)
+                    .stroke(eframe::egui::Stroke::new(0.5, theme.separator))
+                    .inner_margin(eframe::egui::Margin::same(16)),
+            )
+            .show(ctx, |ui| {
+                Self::save_bar(ui, &theme, ctx, self);
+            });
     }
 }

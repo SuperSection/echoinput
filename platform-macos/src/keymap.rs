@@ -69,45 +69,45 @@ pub fn keycode_to_key(keycode: u32) -> VirtualKey {
 
         // Modifiers
         // Note: Left/right determined by key event's isARepeat or we check flags
-        0x38 => VirtualKey::ShiftLeft,       // kVK_Shift
-        0x3C => VirtualKey::ShiftRight,      // kVK_RightShift
-        0x3B => VirtualKey::ControlLeft,     // kVK_Control
-        0x3E => VirtualKey::ControlRight,    // kVK_RightControl
-        0x3A => VirtualKey::AltLeft,         // kVK_Option
-        0x3D => VirtualKey::AltRight,        // kVK_RightOption
-        0x37 => VirtualKey::SuperLeft,       // kVK_Command
-        0x36 => VirtualKey::SuperRight,      // kVK_RightCommand
+        0x38 => VirtualKey::ShiftLeft,    // kVK_Shift
+        0x3C => VirtualKey::ShiftRight,   // kVK_RightShift
+        0x3B => VirtualKey::ControlLeft,  // kVK_Control
+        0x3E => VirtualKey::ControlRight, // kVK_RightControl
+        0x3A => VirtualKey::AltLeft,      // kVK_Option
+        0x3D => VirtualKey::AltRight,     // kVK_RightOption
+        0x37 => VirtualKey::SuperLeft,    // kVK_Command
+        0x36 => VirtualKey::SuperRight,   // kVK_RightCommand
 
         // Navigation & editing
-        0x30 => VirtualKey::Tab,             // kVK_Tab
-        0x35 => VirtualKey::Escape,          // kVK_Escape
-        0x31 => VirtualKey::Space,           // kVK_Space
-        0x24 => VirtualKey::Enter,           // kVK_Return
-        0x33 => VirtualKey::Backspace,       // kVK_Delete (Backspace)
-        0x75 => VirtualKey::Delete,          // kVK_ForwardDelete
-        0x72 => VirtualKey::Insert,          // kVK_Help
-        0x73 => VirtualKey::Home,            // kVK_Home
-        0x77 => VirtualKey::End,             // kVK_End
-        0x74 => VirtualKey::PageUp,          // kVK_PageUp
-        0x79 => VirtualKey::PageDown,        // kVK_PageDown
-        0x7E => VirtualKey::Up,              // kVK_UpArrow
-        0x7D => VirtualKey::Down,            // kVK_DownArrow
-        0x7B => VirtualKey::Left,            // kVK_LeftArrow
-        0x7C => VirtualKey::Right,           // kVK_RightArrow
-        0x47 => VirtualKey::CapsLock,        // kVK_CapsLock
+        0x30 => VirtualKey::Tab,       // kVK_Tab
+        0x35 => VirtualKey::Escape,    // kVK_Escape
+        0x31 => VirtualKey::Space,     // kVK_Space
+        0x24 => VirtualKey::Enter,     // kVK_Return
+        0x33 => VirtualKey::Backspace, // kVK_Delete (Backspace)
+        0x75 => VirtualKey::Delete,    // kVK_ForwardDelete
+        0x72 => VirtualKey::Insert,    // kVK_Help
+        0x73 => VirtualKey::Home,      // kVK_Home
+        0x77 => VirtualKey::End,       // kVK_End
+        0x74 => VirtualKey::PageUp,    // kVK_PageUp
+        0x79 => VirtualKey::PageDown,  // kVK_PageDown
+        0x7E => VirtualKey::Up,        // kVK_UpArrow
+        0x7D => VirtualKey::Down,      // kVK_DownArrow
+        0x7B => VirtualKey::Left,      // kVK_LeftArrow
+        0x7C => VirtualKey::Right,     // kVK_RightArrow
+        0x47 => VirtualKey::CapsLock,  // kVK_CapsLock
 
         // Punctuation & symbols
-        0x1B => VirtualKey::Minus,           // kVK_Minus
-        0x18 => VirtualKey::Equal,           // kVK_Equal
-        0x21 => VirtualKey::LeftBracket,     // kVK_OpenBracket
-        0x1E => VirtualKey::RightBracket,    // kVK_CloseBracket
-        0x2A => VirtualKey::Backslash,       // kVK_Backslash
-        0x29 => VirtualKey::Semicolon,       // kVK_Semicolon
-        0x27 => VirtualKey::Quote,           // kVK_Quote
-        0x2B => VirtualKey::Comma,           // kVK_Comma
-        0x2F => VirtualKey::Period,          // kVK_Period
-        0x2C => VirtualKey::Slash,           // kVK_Slash
-        0x32 => VirtualKey::Backtick,        // kVK_Grave
+        0x1B => VirtualKey::Minus,        // kVK_Minus
+        0x18 => VirtualKey::Equal,        // kVK_Equal
+        0x21 => VirtualKey::LeftBracket,  // kVK_OpenBracket
+        0x1E => VirtualKey::RightBracket, // kVK_CloseBracket
+        0x2A => VirtualKey::Backslash,    // kVK_Backslash
+        0x29 => VirtualKey::Semicolon,    // kVK_Semicolon
+        0x27 => VirtualKey::Quote,        // kVK_Quote
+        0x2B => VirtualKey::Comma,        // kVK_Comma
+        0x2F => VirtualKey::Period,       // kVK_Period
+        0x2C => VirtualKey::Slash,        // kVK_Slash
+        0x32 => VirtualKey::Backtick,     // kVK_Grave
 
         // Numpad
         0x52 => VirtualKey::Numpad0,
@@ -130,9 +130,9 @@ pub fn keycode_to_key(keycode: u32) -> VirtualKey {
         // Media
         // macOS uses consumer control HID events, not keycodes for media keys
         // But these are the NX_KEYTYPE mapped values
-        0x46 => VirtualKey::Mute,            // kVK_Mute (NX_KEYTYPE_MUTE)
-        0x48 => VirtualKey::VolumeDown,      // kVK_VolumeDown
-        0x49 => VirtualKey::VolumeUp,        // kVK_VolumeUp
+        0x46 => VirtualKey::Mute,       // kVK_Mute (NX_KEYTYPE_MUTE)
+        0x48 => VirtualKey::VolumeDown, // kVK_VolumeDown
+        0x49 => VirtualKey::VolumeUp,   // kVK_VolumeUp
 
         _ => VirtualKey::Unknown(keycode),
     }

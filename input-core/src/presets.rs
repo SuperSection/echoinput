@@ -1,6 +1,5 @@
 use crate::overlay::{
-    AnimationType, BorderSettings, ColorSettings, KeycapStyle, TextCaps, TextSettings,
-    TextVariant,
+    AnimationType, BorderSettings, ColorSettings, KeycapStyle, TextCaps, TextSettings, TextVariant,
 };
 use serde::{Deserialize, Serialize};
 

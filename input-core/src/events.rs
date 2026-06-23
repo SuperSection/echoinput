@@ -108,6 +108,16 @@ pub struct ShortcutCombo {
     /// When non-empty, this combo represents multiple sequential key presses.
     #[serde(default)]
     pub key_sequence: Vec<VirtualKey>,
+    /// Pre-resolved display text for character events.
+    /// When set, the renderer shows this instead of building from modifiers+key.
+    /// Examples: "a", "A", "!", "€"
+    #[serde(default)]
+    pub resolved_text: Option<String>,
+    /// Resolved characters for each key in a sequence.
+    /// Parallel to `key_sequence` — same length, one resolved char per key.
+    /// When non-empty, sequence rendering uses these instead of `key.label()`.
+    #[serde(default)]
+    pub resolved_chars: Vec<String>,
 }
 
 impl ShortcutCombo {
@@ -119,6 +129,8 @@ impl ShortcutCombo {
             key,
             display,
             key_sequence: Vec::new(),
+            resolved_text: None,
+            resolved_chars: Vec::new(),
         }
     }
 
@@ -130,6 +142,33 @@ impl ShortcutCombo {
             key: keys.last().copied(),
             display,
             key_sequence: keys,
+            resolved_text: None,
+            resolved_chars: Vec::new(),
+        }
+    }
+
+    /// Create a character combo — a single resolved symbol.
+    pub fn character(key: VirtualKey, resolved_text: String) -> Self {
+        Self {
+            modifiers: ModifierState::default(),
+            key: Some(key),
+            display: resolved_text.clone(),
+            key_sequence: Vec::new(),
+            resolved_text: Some(resolved_text),
+            resolved_chars: Vec::new(),
+        }
+    }
+
+    /// Create a sequence from resolved characters (for character merging).
+    pub fn resolved_sequence(keys: Vec<VirtualKey>, chars: Vec<String>) -> Self {
+        let display = chars.join("");
+        Self {
+            modifiers: ModifierState::default(),
+            key: keys.last().copied(),
+            display,
+            key_sequence: keys,
+            resolved_text: None,
+            resolved_chars: chars,
         }
     }
 
@@ -161,7 +200,7 @@ impl ShortcutCombo {
 
     /// Get the display label for a key given the current modifier state.
     /// Handles shifted symbols, CapsLock for letters, and NumLock for numpad.
-    fn get_key_display(mods: &ModifierState, key: &VirtualKey) -> String {
+    pub fn get_key_display(mods: &ModifierState, key: &VirtualKey) -> String {
         // Check for shifted symbols first
         if mods.shift {
             if let Some(shifted) = key.shifted_label() {
@@ -251,6 +290,8 @@ pub enum InputEvent {
 pub enum ProcessedEvent {
     /// A completed shortcut combo (grouped mode).
     Shortcut(ShortcutCombo),
+    /// A resolved character to display as a single keycap.
+    Character(String),
     /// Modifier state changed (for tracking held modifiers).
     ModifierChange(ModifierState),
     /// A single key event (raw mode).
@@ -596,7 +637,11 @@ mod tests {
                 ..Default::default()
             };
             let result = ShortcutCombo::build_display(&mods, Some(&VirtualKey::A));
-            assert_eq!(result, expected, "Failed for capslock={}, shift={}", capslock, shift);
+            assert_eq!(
+                result, expected,
+                "Failed for capslock={}, shift={}",
+                capslock, shift
+            );
         }
     }
 }

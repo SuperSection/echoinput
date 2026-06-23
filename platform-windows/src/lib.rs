@@ -4,7 +4,7 @@ pub mod overlay;
 use anyhow::Result;
 use input_core::events::InputEvent;
 use input_core::ipc::MessageBus;
-use platform::capture::{CaptureFeatures, KeyboardCaptureProvider, KeyboardCaptureFactory};
+use platform::capture::{CaptureFeatures, KeyboardCaptureFactory, KeyboardCaptureProvider};
 use platform::overlay::OverlayRendererFactory;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -126,7 +126,7 @@ fn run_windows_hook(
     shutdown: Arc<AtomicBool>,
 ) -> Result<()> {
     use crate::keymap::vk_with_scancode_to_key;
-    use input_core::events::{KeyboardEvent, KeyState};
+    use input_core::events::{KeyState, KeyboardEvent};
     use std::time::SystemTime;
 
     unsafe extern "system" fn keyboard_proc(
@@ -136,11 +136,7 @@ fn run_windows_hook(
     ) -> windows::Win32::Foundation::LRESULT {
         use std::sync::OnceLock;
 
-        static TX_CHANNEL: OnceLock<crossbeam_channel::Sender<(
-            u32,
-            u32,
-            bool,
-        )>> = OnceLock::new();
+        static TX_CHANNEL: OnceLock<crossbeam_channel::Sender<(u32, u32, bool)>> = OnceLock::new();
 
         let tx = TX_CHANNEL.get();
 
@@ -156,7 +152,12 @@ fn run_windows_hook(
             }
         }
 
-        CallNextHookEx(None, n_code, windows::Win32::Foundation::WPARAM(w_param.0), windows::Win32::Foundation::LPARAM(l_param.0))
+        CallNextHookEx(
+            None,
+            n_code,
+            windows::Win32::Foundation::WPARAM(w_param.0),
+            windows::Win32::Foundation::LPARAM(l_param.0),
+        )
     }
 
     use std::sync::OnceLock;
@@ -230,11 +231,15 @@ impl Drop for WindowsCapture {
 pub struct WindowsCaptureFactory;
 
 impl WindowsCaptureFactory {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl Default for WindowsCaptureFactory {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl KeyboardCaptureFactory for WindowsCaptureFactory {
@@ -253,11 +258,17 @@ pub struct WindowsRendererFactory {
 }
 
 impl WindowsRendererFactory {
-    pub fn new() -> Self { Self { inner: overlay::WindowsRendererFactory::new() } }
+    pub fn new() -> Self {
+        Self {
+            inner: overlay::WindowsRendererFactory::new(),
+        }
+    }
 }
 
 impl Default for WindowsRendererFactory {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl OverlayRendererFactory for WindowsRendererFactory {

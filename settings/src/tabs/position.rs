@@ -1,13 +1,25 @@
 //! Position settings tab.
 
+use crate::app::{card, dropdown, labeled_slider, save_bar, ANIMATION_TYPES, POSITIONS, SCALES};
 use crate::theme::Theme;
-use crate::app::{POSITIONS, SCALES, ANIMATION_TYPES, card, dropdown, labeled_slider, save_bar};
 use eframe::egui::{Context, Ui};
 
-pub fn render_position_tab(ui: &mut Ui, theme: &Theme, ctx: &Context, app: &mut crate::app::SettingsApp) {
+pub fn render_position_tab(
+    ui: &mut Ui,
+    theme: &Theme,
+    ctx: &Context,
+    app: &mut crate::app::SettingsApp,
+) {
     ui.add_space(4.0);
     card(ui, theme, |ui| {
-        dropdown(ui, theme, "position", "Position", POSITIONS, &mut app.position_index);
+        dropdown(
+            ui,
+            theme,
+            "position",
+            "Position",
+            POSITIONS,
+            &mut app.position_index,
+        );
         ui.add_space(4.0);
         dropdown(ui, theme, "scale", "Scale", SCALES, &mut app.scale_index);
 
@@ -38,7 +50,14 @@ pub fn render_position_tab(ui: &mut Ui, theme: &Theme, ctx: &Context, app: &mut 
         app.config.animation_speed = Some(anim_speed);
 
         let mut duration_ms = app.config.display_duration_ms.unwrap_or(1500) as f32;
-        labeled_slider(ui, theme, "Duration", &mut duration_ms, 500.0..=5000.0, "ms");
+        labeled_slider(
+            ui,
+            theme,
+            "Duration",
+            &mut duration_ms,
+            500.0..=5000.0,
+            "ms",
+        );
         app.config.display_duration_ms = Some(duration_ms as u64);
     });
 

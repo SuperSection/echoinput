@@ -1,10 +1,15 @@
 //! Display settings tab.
 
+use crate::app::{card, labeled_slider, labeled_slider_f64, save_bar};
 use crate::theme::Theme;
-use crate::app::{card, labeled_slider_f64, labeled_slider, save_bar};
 use eframe::egui::{Context, Ui};
 
-pub fn render_display_tab(ui: &mut Ui, theme: &Theme, ctx: &Context, app: &mut crate::app::SettingsApp) {
+pub fn render_display_tab(
+    ui: &mut Ui,
+    theme: &Theme,
+    ctx: &Context,
+    app: &mut crate::app::SettingsApp,
+) {
     ui.add_space(4.0);
     card(ui, theme, |ui| {
         let mut opacity = app.config.opacity.unwrap_or(0.9) as f64;

@@ -49,7 +49,7 @@ pub fn scancode_to_key(scancode: u32) -> VirtualKey {
         10 => VirtualKey::Key9,
 
         // Function keys
-        59 => VirtualKey::F1,   // KEY_F1
+        59 => VirtualKey::F1, // KEY_F1
         60 => VirtualKey::F2,
         61 => VirtualKey::F3,
         62 => VirtualKey::F4,
@@ -75,35 +75,35 @@ pub fn scancode_to_key(scancode: u32) -> VirtualKey {
         194 => VirtualKey::F24,
 
         // Modifiers
-        29 => VirtualKey::ControlLeft,   // KEY_LEFTCTRL
-        97 => VirtualKey::ControlRight,  // KEY_RIGHTCTRL
-        42 => VirtualKey::ShiftLeft,     // KEY_LEFTSHIFT
-        54 => VirtualKey::ShiftRight,    // KEY_RIGHTSHIFT
-        56 => VirtualKey::AltLeft,       // KEY_LEFTALT
-        100 => VirtualKey::AltRight,     // KEY_RIGHTALT
-        125 => VirtualKey::SuperLeft,    // KEY_LEFTMETA
-        126 => VirtualKey::SuperRight,   // KEY_RIGHTMETA
+        29 => VirtualKey::ControlLeft,  // KEY_LEFTCTRL
+        97 => VirtualKey::ControlRight, // KEY_RIGHTCTRL
+        42 => VirtualKey::ShiftLeft,    // KEY_LEFTSHIFT
+        54 => VirtualKey::ShiftRight,   // KEY_RIGHTSHIFT
+        56 => VirtualKey::AltLeft,      // KEY_LEFTALT
+        100 => VirtualKey::AltRight,    // KEY_RIGHTALT
+        125 => VirtualKey::SuperLeft,   // KEY_LEFTMETA
+        126 => VirtualKey::SuperRight,  // KEY_RIGHTMETA
 
         // Navigation & editing
-        15 => VirtualKey::Tab,          // KEY_TAB
-        1 => VirtualKey::Escape,        // KEY_ESC
-        57 => VirtualKey::Space,        // KEY_SPACE
-        28 => VirtualKey::Enter,        // KEY_ENTER
-        14 => VirtualKey::Backspace,    // KEY_BACKSPACE
-        111 => VirtualKey::Delete,      // KEY_DELETE
-        110 => VirtualKey::Insert,      // KEY_INSERT
-        102 => VirtualKey::Home,        // KEY_HOME
-        107 => VirtualKey::End,         // KEY_END
-        104 => VirtualKey::PageUp,      // KEY_PAGEUP
-        109 => VirtualKey::PageDown,    // KEY_PAGEDOWN
-        103 => VirtualKey::Up,          // KEY_UP
-        108 => VirtualKey::Down,        // KEY_DOWN
-        105 => VirtualKey::Left,        // KEY_LEFT
-        106 => VirtualKey::Right,       // KEY_RIGHT
-        99 => VirtualKey::PrintScreen,  // KEY_SYSRQ
-        70 => VirtualKey::ScrollLock,   // KEY_SCROLLLOCK
-        119 => VirtualKey::Pause,       // KEY_PAUSE
-        58 => VirtualKey::CapsLock,     // KEY_CAPSLOCK
+        15 => VirtualKey::Tab,         // KEY_TAB
+        1 => VirtualKey::Escape,       // KEY_ESC
+        57 => VirtualKey::Space,       // KEY_SPACE
+        28 => VirtualKey::Enter,       // KEY_ENTER
+        14 => VirtualKey::Backspace,   // KEY_BACKSPACE
+        111 => VirtualKey::Delete,     // KEY_DELETE
+        110 => VirtualKey::Insert,     // KEY_INSERT
+        102 => VirtualKey::Home,       // KEY_HOME
+        107 => VirtualKey::End,        // KEY_END
+        104 => VirtualKey::PageUp,     // KEY_PAGEUP
+        109 => VirtualKey::PageDown,   // KEY_PAGEDOWN
+        103 => VirtualKey::Up,         // KEY_UP
+        108 => VirtualKey::Down,       // KEY_DOWN
+        105 => VirtualKey::Left,       // KEY_LEFT
+        106 => VirtualKey::Right,      // KEY_RIGHT
+        99 => VirtualKey::PrintScreen, // KEY_SYSRQ
+        70 => VirtualKey::ScrollLock,  // KEY_SCROLLLOCK
+        119 => VirtualKey::Pause,      // KEY_PAUSE
+        58 => VirtualKey::CapsLock,    // KEY_CAPSLOCK
 
         // Punctuation & symbols
         12 => VirtualKey::Minus,        // KEY_MINUS
@@ -119,37 +119,37 @@ pub fn scancode_to_key(scancode: u32) -> VirtualKey {
         41 => VirtualKey::Backtick,     // KEY_GRAVE
 
         // Numpad
-        82 => VirtualKey::Numpad0,      // KEY_KP0
-        79 => VirtualKey::Numpad1,      // KEY_KP1
-        80 => VirtualKey::Numpad2,      // KEY_KP2
-        81 => VirtualKey::Numpad3,      // KEY_KP3
-        75 => VirtualKey::Numpad4,      // KEY_KP4
-        76 => VirtualKey::Numpad5,      // KEY_KP5
-        77 => VirtualKey::Numpad6,      // KEY_KP6
-        71 => VirtualKey::Numpad7,      // KEY_KP7
-        72 => VirtualKey::Numpad8,      // KEY_KP8
-        73 => VirtualKey::Numpad9,      // KEY_KP9
-        78 => VirtualKey::NumpadAdd,    // KEY_KPPLUS
+        82 => VirtualKey::Numpad0,        // KEY_KP0
+        79 => VirtualKey::Numpad1,        // KEY_KP1
+        80 => VirtualKey::Numpad2,        // KEY_KP2
+        81 => VirtualKey::Numpad3,        // KEY_KP3
+        75 => VirtualKey::Numpad4,        // KEY_KP4
+        76 => VirtualKey::Numpad5,        // KEY_KP5
+        77 => VirtualKey::Numpad6,        // KEY_KP6
+        71 => VirtualKey::Numpad7,        // KEY_KP7
+        72 => VirtualKey::Numpad8,        // KEY_KP8
+        73 => VirtualKey::Numpad9,        // KEY_KP9
+        78 => VirtualKey::NumpadAdd,      // KEY_KPPLUS
         74 => VirtualKey::NumpadSubtract, // KEY_KPMINUS
         55 => VirtualKey::NumpadMultiply, // KEY_KPASTERISK
-        98 => VirtualKey::NumpadDivide, // KEY_KPSLASH
-        83 => VirtualKey::NumpadDecimal, // KEY_KPDOT
-        96 => VirtualKey::NumpadEnter,  // KEY_KPENTER
-        69 => VirtualKey::NumpadLock,   // KEY_NUMLOCK
+        98 => VirtualKey::NumpadDivide,   // KEY_KPSLASH
+        83 => VirtualKey::NumpadDecimal,  // KEY_KPDOT
+        96 => VirtualKey::NumpadEnter,    // KEY_KPENTER
+        69 => VirtualKey::NumpadLock,     // KEY_NUMLOCK
 
         // Media
-        164 => VirtualKey::MediaPlay,    // KEY_PLAYPAUSE
-        166 => VirtualKey::MediaStop,    // KEY_STOPCD
-        163 => VirtualKey::MediaNext,    // KEY_NEXTSONG
-        165 => VirtualKey::MediaPrev,    // KEY_PREVIOUSSONG
-        113 => VirtualKey::Mute,         // KEY_MUTE
-        114 => VirtualKey::VolumeDown,   // KEY_VOLUMEDOWN
-        115 => VirtualKey::VolumeUp,     // KEY_VOLUMEUP
+        164 => VirtualKey::MediaPlay,  // KEY_PLAYPAUSE
+        166 => VirtualKey::MediaStop,  // KEY_STOPCD
+        163 => VirtualKey::MediaNext,  // KEY_NEXTSONG
+        165 => VirtualKey::MediaPrev,  // KEY_PREVIOUSSONG
+        113 => VirtualKey::Mute,       // KEY_MUTE
+        114 => VirtualKey::VolumeDown, // KEY_VOLUMEDOWN
+        115 => VirtualKey::VolumeUp,   // KEY_VOLUMEUP
 
         // Browser
-        158 => VirtualKey::BrowserBack,      // KEY_BACK
-        159 => VirtualKey::BrowserForward,   // KEY_FORWARD
-        181 => VirtualKey::BrowserRefresh,   // KEY_REFRESH
+        158 => VirtualKey::BrowserBack,    // KEY_BACK
+        159 => VirtualKey::BrowserForward, // KEY_FORWARD
+        181 => VirtualKey::BrowserRefresh, // KEY_REFRESH
 
         _ => VirtualKey::Unknown(scancode),
     }

@@ -1,8 +1,6 @@
 use input_core::events::ShortcutCombo;
 use input_core::ipc::MessageBus;
-use input_core::overlay::{
-    DisplayEvent, KeycapStyle, OverlayConfig, TextCaps, TextVariant,
-};
+use input_core::overlay::{DisplayEvent, KeycapStyle, OverlayConfig, TextCaps, TextVariant};
 use platform::overlay::{OverlayRenderer, OverlayRendererFactory};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -11,7 +9,7 @@ use tracing::{info, warn};
 
 #[allow(dead_code)]
 enum RendererCommand {
-    Update(()),
+    Update(DisplayEvent),
     Stop,
 }
 
@@ -24,21 +22,37 @@ pub struct MacRenderer {
 
 impl MacRenderer {
     pub fn new(bus: MessageBus) -> Self {
-        Self { bus: Some(bus), cmd_tx: None, handle: None, shutdown: None }
+        Self {
+            bus: Some(bus),
+            cmd_tx: None,
+            handle: None,
+            shutdown: None,
+        }
     }
 
     pub fn with_shutdown(bus: MessageBus, shutdown: Arc<AtomicBool>) -> Self {
-        Self { bus: Some(bus), cmd_tx: None, handle: None, shutdown: Some(shutdown) }
+        Self {
+            bus: Some(bus),
+            cmd_tx: None,
+            handle: None,
+            shutdown: Some(shutdown),
+        }
     }
 }
 
 #[async_trait::async_trait]
 impl OverlayRenderer for MacRenderer {
     async fn start(&mut self, config: OverlayConfig) -> anyhow::Result<()> {
-        let bus = self.bus.take().ok_or_else(|| anyhow::anyhow!("No MessageBus"))?;
+        let bus = self
+            .bus
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("No MessageBus"))?;
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         self.cmd_tx = Some(cmd_tx);
-        let shutdown = self.shutdown.take().unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
+        let shutdown = self
+            .shutdown
+            .take()
+            .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
 
         let handle = tokio::task::spawn_blocking(move || {
             #[cfg(target_os = "macos")]
@@ -70,33 +84,43 @@ impl OverlayRenderer for MacRenderer {
         Ok(())
     }
 
-    fn update(&self, _event: DisplayEvent) -> anyhow::Result<()> {
+    fn update(&self, event: DisplayEvent) -> anyhow::Result<()> {
         if let Some(tx) = &self.cmd_tx {
-            tx.send(RendererCommand::Update(()))
+            tx.send(RendererCommand::Update(event))
                 .map_err(|e| anyhow::anyhow!("{}", e))?;
         }
         Ok(())
     }
 
-    fn is_running(&self) -> bool { self.handle.is_some() }
-    fn name(&self) -> &str { "MacRenderer" }
+    fn is_running(&self) -> bool {
+        self.handle.is_some()
+    }
+    fn name(&self) -> &str {
+        "MacRenderer"
+    }
 }
 
 pub struct MacRendererFactory;
 
 impl MacRendererFactory {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl Default for MacRendererFactory {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl OverlayRendererFactory for MacRendererFactory {
     fn create(&self, bus: MessageBus) -> Box<dyn OverlayRenderer> {
         Box::new(MacRenderer::new(bus))
     }
-    fn platform_name(&self) -> &str { "macos" }
+    fn platform_name(&self) -> &str {
+        "macos"
+    }
 }
 
 // ── Hex color parsing ──────────────────────────────────────────
@@ -124,14 +148,15 @@ fn run_macos_overlay(
     mut cmd_rx: mpsc::UnboundedReceiver<RendererCommand>,
     shutdown: Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
+    use objc::msg_send;
     use objc::runtime::{Class, Object};
     use objc::sel;
     use objc::sel_impl;
-    use objc::msg_send;
 
     unsafe {
         // Get NSApplication and screen info
-        let ns_app: *mut Object = msg_send![Class::get("NSApplication").unwrap(), sharedApplication];
+        let ns_app: *mut Object =
+            msg_send![Class::get("NSApplication").unwrap(), sharedApplication];
         let screen: *mut Object = msg_send![ns_app, mainWindow];
         let screen_frame: NSRect = msg_send![screen, frame];
         let screen_w = screen_frame.size.width;
@@ -147,7 +172,10 @@ fn run_macos_overlay(
 
         let content_rect = NSRect {
             origin: NSPoint { x: 0.0, y: 0.0 },
-            size: NSSize { width: screen_w, height: screen_h },
+            size: NSSize {
+                width: screen_w,
+                height: screen_h,
+            },
         };
 
         let panel: *mut Object = msg_send![panel,
@@ -210,7 +238,13 @@ fn run_macos_overlay(
                                             keys.remove(0);
                                         }
                                         current_combos[0] = ShortcutCombo::sequence(keys);
-                                        render_macos_view(view, &current_combos, &config, screen_w, screen_h);
+                                        render_macos_view(
+                                            view,
+                                            &current_combos,
+                                            &config,
+                                            screen_w,
+                                            screen_h,
+                                        );
                                         continue;
                                     }
                                 }
@@ -266,8 +300,8 @@ unsafe fn render_macos_view(
     screen_w: f64,
     screen_h: f64,
 ) {
-    use objc::runtime::{Class, Object};
     use objc::msg_send;
+    use objc::runtime::{Class, Object};
 
     // Render to Cairo ImageSurface
     let surf_w = screen_w as i32;
@@ -319,7 +353,10 @@ unsafe fn render_macos_view(
             // Create NSImage and set as layer contents
             let image_class = Class::get("NSImage").unwrap();
             let image: *mut Object = msg_send![image_class, alloc];
-            let size = NSSize { width: screen_w, height: screen_h };
+            let size = NSSize {
+                width: screen_w,
+                height: screen_h,
+            };
             let image: *mut Object = msg_send![image, initWithSize: size];
             let _: () = msg_send![image, addRepresentation: bitmap];
 
@@ -379,13 +416,20 @@ fn render_keycaps_cairo(
     cr.set_operator(cairo::Operator::Over);
 
     let visible: Vec<&ShortcutCombo> = combos.iter().take(5).collect();
-    if visible.is_empty() { return; }
+    if visible.is_empty() {
+        return;
+    }
 
-    cr.select_font_face("sans-serif", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
+    cr.select_font_face(
+        "sans-serif",
+        cairo::FontSlant::Normal,
+        cairo::FontWeight::Bold,
+    );
     cr.set_font_size(font_size);
 
     let keycap_h = font_size + padding_y * 2.0;
-    let content_h = visible.len() as f64 * keycap_h + (visible.len().saturating_sub(1)) as f64 * 8.0;
+    let content_h =
+        visible.len() as f64 * keycap_h + (visible.len().saturating_sub(1)) as f64 * 8.0;
 
     let mut y = match config.position {
         OverlayPosition::TopLeft | OverlayPosition::TopRight | OverlayPosition::TopCenter => {
@@ -396,7 +440,9 @@ fn render_keycaps_cairo(
 
     for (row_idx, combo) in visible.iter().enumerate() {
         let parts = combo_to_key_parts(combo, &config.text.variant);
-        if parts.is_empty() { continue; }
+        if parts.is_empty() {
+            continue;
+        }
         let is_seq = combo.is_sequence();
         let row_opacity = (1.0 - row_idx as f32 * 0.15).max(0.3);
 
@@ -411,15 +457,35 @@ fn render_keycaps_cairo(
 
             let (bg_r, bg_g, bg_b, bg2_r, bg2_g, bg2_b, brd_r, brd_g, brd_b, txt_r, txt_g, txt_b) =
                 if is_mod && config.colors.highlight_modifiers {
-                    (modifier_primary.0, modifier_primary.1, modifier_primary.2,
-                     modifier_secondary.0, modifier_secondary.1, modifier_secondary.2,
-                     modifier_border_color.0, modifier_border_color.1, modifier_border_color.2,
-                     modifier_text_color.0, modifier_text_color.1, modifier_text_color.2)
+                    (
+                        modifier_primary.0,
+                        modifier_primary.1,
+                        modifier_primary.2,
+                        modifier_secondary.0,
+                        modifier_secondary.1,
+                        modifier_secondary.2,
+                        modifier_border_color.0,
+                        modifier_border_color.1,
+                        modifier_border_color.2,
+                        modifier_text_color.0,
+                        modifier_text_color.1,
+                        modifier_text_color.2,
+                    )
                 } else {
-                    (keycap_primary.0, keycap_primary.1, keycap_primary.2,
-                     keycap_secondary.0, keycap_secondary.1, keycap_secondary.2,
-                     border_color.0, border_color.1, border_color.2,
-                     text_color.0, text_color.1, text_color.2)
+                    (
+                        keycap_primary.0,
+                        keycap_primary.1,
+                        keycap_primary.2,
+                        keycap_secondary.0,
+                        keycap_secondary.1,
+                        keycap_secondary.2,
+                        border_color.0,
+                        border_color.1,
+                        border_color.2,
+                        text_color.0,
+                        text_color.1,
+                        text_color.2,
+                    )
                 };
 
             // Shadow
@@ -441,14 +507,30 @@ fn render_keycaps_cairo(
                 }
                 KeycapStyle::LowProfile => {
                     let _ = cr.set_source_rgba(
-                        bg_r * 0.8, bg_g * 0.8, bg_b * 0.8, row_opacity as f64 * 0.85);
+                        bg_r * 0.8,
+                        bg_g * 0.8,
+                        bg_b * 0.8,
+                        row_opacity as f64 * 0.85,
+                    );
                     let _ = cr.fill();
                 }
                 _ => {
                     if config.colors.use_gradient {
                         let pattern = cairo::LinearGradient::new(0.0, y, 0.0, y + keycap_h);
-                        pattern.add_color_stop_rgba(0.0, bg2_r, bg2_g, bg2_b, row_opacity as f64 * 0.95);
-                        pattern.add_color_stop_rgba(1.0, bg_r, bg_g, bg_b, row_opacity as f64 * 0.9);
+                        pattern.add_color_stop_rgba(
+                            0.0,
+                            bg2_r,
+                            bg2_g,
+                            bg2_b,
+                            row_opacity as f64 * 0.95,
+                        );
+                        pattern.add_color_stop_rgba(
+                            1.0,
+                            bg_r,
+                            bg_g,
+                            bg_b,
+                            row_opacity as f64 * 0.9,
+                        );
                         let _ = cr.set_source(&pattern);
                     } else {
                         let _ = cr.set_source_rgba(bg_r, bg_g, bg_b, row_opacity as f64 * 0.9);
@@ -467,7 +549,14 @@ fn render_keycaps_cairo(
             // Highlight
             if matches!(config.keycap_style, KeycapStyle::Laptop | KeycapStyle::PBT) {
                 cr.new_path();
-                draw_rounded_rect(cr, x + 1.0, y + 1.0, kw - 2.0, keycap_h * 0.4, corner_radius - 1.0);
+                draw_rounded_rect(
+                    cr,
+                    x + 1.0,
+                    y + 1.0,
+                    kw - 2.0,
+                    keycap_h * 0.4,
+                    corner_radius - 1.0,
+                );
                 let highlight = cairo::LinearGradient::new(0.0, y, 0.0, y + keycap_h * 0.4);
                 highlight.add_color_stop_rgba(0.0, 1.0, 1.0, 1.0, 0.08 * row_opacity as f64);
                 highlight.add_color_stop_rgba(1.0, 1.0, 1.0, 1.0, 0.0);
@@ -536,8 +625,20 @@ fn draw_rounded_rect(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, r: f64
     cr.new_sub_path();
     cr.arc(x + w - r, y + r, r, -std::f64::consts::FRAC_PI_2, 0.0);
     cr.arc(x + w - r, y + h - r, r, 0.0, std::f64::consts::FRAC_PI_2);
-    cr.arc(x + r, y + h - r, r, std::f64::consts::FRAC_PI_2, std::f64::consts::PI);
-    cr.arc(x + r, y + r, r, std::f64::consts::PI, 3.0 * std::f64::consts::FRAC_PI_2);
+    cr.arc(
+        x + r,
+        y + h - r,
+        r,
+        std::f64::consts::FRAC_PI_2,
+        std::f64::consts::PI,
+    );
+    cr.arc(
+        x + r,
+        y + r,
+        r,
+        std::f64::consts::PI,
+        3.0 * std::f64::consts::FRAC_PI_2,
+    );
     cr.close_path();
 }
 
@@ -546,14 +647,29 @@ fn draw_rounded_rect(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, r: f64
 #[allow(dead_code)]
 fn combo_to_key_parts(combo: &ShortcutCombo, variant: &TextVariant) -> Vec<String> {
     if combo.is_sequence() {
-        return combo.key_sequence.iter().map(|k| apply_text_variant(&k.label(), variant)).collect();
+        return combo
+            .key_sequence
+            .iter()
+            .map(|k| apply_text_variant(&k.label(), variant))
+            .collect();
     }
     let mut parts = Vec::new();
-    if combo.modifiers.ctrl { parts.push(apply_modifier_label("Ctrl", variant)); }
-    if combo.modifiers.alt { parts.push(apply_modifier_label("Alt", variant)); }
-    if combo.modifiers.shift { parts.push(apply_modifier_label("Shift", variant)); }
-    if combo.modifiers.super_key { parts.push(apply_modifier_label("Super", variant)); }
-    if let Some(key) = &combo.key { parts.push(apply_text_variant(&key.label(), variant)); }
+    if combo.modifiers.ctrl {
+        parts.push(apply_modifier_label("Ctrl", variant));
+    }
+    if combo.modifiers.alt {
+        parts.push(apply_modifier_label("Alt", variant));
+    }
+    if combo.modifiers.shift {
+        parts.push(apply_modifier_label("Shift", variant));
+    }
+    if combo.modifiers.super_key {
+        parts.push(apply_modifier_label("Super", variant));
+    }
+    if let Some(key) = &combo.key {
+        let key_label = ShortcutCombo::get_key_display(&combo.modifiers, key);
+        parts.push(apply_text_variant(&key_label, variant));
+    }
     parts
 }
 
@@ -562,14 +678,23 @@ fn apply_text_variant(label: &str, variant: &TextVariant) -> String {
     match variant {
         TextVariant::Full => label.to_string(),
         TextVariant::Short => shorten_label(label),
-        TextVariant::Icon => if label.len() <= 2 { label.to_string() } else { shorten_label(label) },
+        TextVariant::Icon => {
+            if label.len() <= 2 {
+                label.to_string()
+            } else {
+                shorten_label(label)
+            }
+        }
     }
 }
 
 #[allow(dead_code)]
 fn apply_modifier_label(label: &str, variant: &TextVariant) -> String {
     match variant {
-        TextVariant::Full => match label { "Ctrl" => "Control".to_string(), _ => label.to_string() },
+        TextVariant::Full => match label {
+            "Ctrl" => "Control".to_string(),
+            _ => label.to_string(),
+        },
         TextVariant::Short | TextVariant::Icon => label.to_string(),
     }
 }
@@ -608,7 +733,10 @@ fn shorten_label(label: &str) -> String {
 
 #[allow(dead_code)]
 fn is_modifier_label(label: &str) -> bool {
-    matches!(label, "Ctrl" | "Alt" | "Shift" | "Super" | "Meta" | "Control")
+    matches!(
+        label,
+        "Ctrl" | "Alt" | "Shift" | "Super" | "Meta" | "Control"
+    )
 }
 
 // macOS FFI types (used when compiling on macOS)

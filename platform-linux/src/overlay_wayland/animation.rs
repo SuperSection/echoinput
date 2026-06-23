@@ -1,5 +1,5 @@
-use std::time::{Duration, Instant};
 use input_core::overlay::{AnimationType, OverlayConfig};
+use std::time::{Duration, Instant};
 
 const DEFAULT_FADE_DURATION: Duration = Duration::from_millis(300);
 const SLIDE_DURATION: Duration = Duration::from_millis(200);

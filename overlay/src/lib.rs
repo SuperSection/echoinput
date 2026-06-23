@@ -44,23 +44,33 @@ impl OverlayState {
 
     /// Show a new shortcut on the overlay.
     pub fn show_shortcut(&mut self, combo: ShortcutCombo) {
-        let merged_combo = if combo.modifiers.is_empty() {
+        let merged_combo = if combo.modifiers.is_empty() && combo.resolved_text.is_some() {
             // Plain keystroke: check if we can merge with the most recent entry
             if let Some(front) = self.items.front() {
                 if front.combo.modifiers.is_empty() {
                     // Merge into the existing sequence — remove the old entry
                     let mut keys = front.combo.key_sequence.clone();
+                    let mut chars = front.combo.resolved_chars.clone();
                     if keys.is_empty() {
-                        // Previous was a single plain keystroke, start collecting
                         if let Some(prev_key) = front.combo.key {
                             keys.push(prev_key);
+                            if let Some(ref rt) = front.combo.resolved_text {
+                                chars.push(rt.clone());
+                            }
                         }
                     }
                     if let Some(new_key) = combo.key {
                         keys.push(new_key);
                     }
+                    if let Some(ref new_char) = combo.resolved_text {
+                        chars.push(new_char.clone());
+                    }
                     self.items.pop_front();
-                    ShortcutCombo::sequence(keys)
+                    if !chars.is_empty() {
+                        ShortcutCombo::resolved_sequence(keys, chars)
+                    } else {
+                        ShortcutCombo::sequence(keys)
+                    }
                 } else {
                     combo
                 }
@@ -100,7 +110,9 @@ impl OverlayState {
     /// Update configuration.
     pub fn update_config(&mut self, config: OverlayConfig) {
         self.config = config;
-        let _ = self.tx.send(DisplayEvent::UpdateConfig(self.config.clone()));
+        let _ = self
+            .tx
+            .send(DisplayEvent::UpdateConfig(self.config.clone()));
     }
 
     /// Get current configuration.

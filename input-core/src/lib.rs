@@ -1,6 +1,7 @@
 pub mod config;
 pub mod events;
 pub mod ipc;
+pub mod key_resolver;
 pub mod keys;
 pub mod overlay;
 pub mod presets;
@@ -10,6 +11,7 @@ pub mod traits;
 pub use config::*;
 pub use events::*;
 pub use ipc::*;
+pub use key_resolver::*;
 pub use keys::*;
 pub use overlay::*;
 pub use presets::*;

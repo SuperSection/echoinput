@@ -4,7 +4,7 @@ pub mod overlay;
 use anyhow::Result;
 use input_core::events::InputEvent;
 use input_core::ipc::MessageBus;
-use platform::capture::{CaptureFeatures, KeyboardCaptureProvider, KeyboardCaptureFactory};
+use platform::capture::{CaptureFeatures, KeyboardCaptureFactory, KeyboardCaptureProvider};
 use platform::overlay::OverlayRendererFactory;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -126,9 +126,9 @@ fn run_macos_event_tap(
     use core_foundation::mach_port::{CFMachPort, CFMachPortRef};
     use core_foundation::runloop::*;
     use core_foundation::string::CFString;
+    use input_core::events::{KeyState, KeyboardEvent};
     use std::ffi::c_void;
     use std::sync::mpsc;
-    use input_core::events::{KeyboardEvent, KeyState};
     use std::time::SystemTime;
 
     // Channel for the event tap callback to send events back
@@ -196,10 +196,8 @@ fn run_macos_event_tap(
 
         // Add to run loop
         let run_loop = CFRunLoop::get_current();
-        let source = core_foundation::runloop::CFRunLoopSource::new(
-            tap_port.as_concrete_TypeRef(),
-            0,
-        );
+        let source =
+            core_foundation::runloop::CFRunLoopSource::new(tap_port.as_concrete_TypeRef(), 0);
         run_loop.add_source(&source, kCFRunLoopDefaultMode);
 
         // Enable the tap
@@ -257,11 +255,15 @@ impl Drop for MacosCapture {
 pub struct MacosCaptureFactory;
 
 impl MacosCaptureFactory {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl Default for MacosCaptureFactory {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl KeyboardCaptureFactory for MacosCaptureFactory {
@@ -280,11 +282,17 @@ pub struct MacRendererFactory {
 }
 
 impl MacRendererFactory {
-    pub fn new() -> Self { Self { inner: overlay::MacRendererFactory::new() } }
+    pub fn new() -> Self {
+        Self {
+            inner: overlay::MacRendererFactory::new(),
+        }
+    }
 }
 
 impl Default for MacRendererFactory {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl OverlayRendererFactory for MacRendererFactory {

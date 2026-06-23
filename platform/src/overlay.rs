@@ -1,11 +1,10 @@
 //! Overlay renderer trait and configuration types (re-exported from input-core).
 
-pub use input_core::overlay::{
-    AnimationType, BorderSettings, BackgroundSettings, ColorSettings, DisplayEvent,
-    KeycapStyle, OverlayConfig, OverlayPosition, OverlayScale, TextCaps, TextSettings,
-    TextVariant, Theme,
-};
 pub use input_core::events::InputEvent;
+pub use input_core::overlay::{
+    AnimationType, BackgroundSettings, BorderSettings, ColorSettings, DisplayEvent, KeycapStyle,
+    OverlayConfig, OverlayPosition, OverlayScale, TextCaps, TextSettings, TextVariant, Theme,
+};
 
 use anyhow::Result;
 

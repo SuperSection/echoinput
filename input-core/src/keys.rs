@@ -10,17 +10,70 @@ use std::fmt;
 #[allow(missing_docs)]
 pub enum VirtualKey {
     // Letters
-    A, B, C, D, E, F, G, H, I, J, K, L, M,
-    N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
+    A,
+    B,
+    C,
+    D,
+    E,
+    F,
+    G,
+    H,
+    I,
+    J,
+    K,
+    L,
+    M,
+    N,
+    O,
+    P,
+    Q,
+    R,
+    S,
+    T,
+    U,
+    V,
+    W,
+    X,
+    Y,
+    Z,
 
     // Numbers
-    Key0, Key1, Key2, Key3, Key4, Key5,
-    Key6, Key7, Key8, Key9,
+    Key0,
+    Key1,
+    Key2,
+    Key3,
+    Key4,
+    Key5,
+    Key6,
+    Key7,
+    Key8,
+    Key9,
 
     // Function keys
-    F1, F2, F3, F4, F5, F6, F7, F8,
-    F9, F10, F11, F12, F13, F14, F15, F16,
-    F17, F18, F19, F20, F21, F22, F23, F24,
+    F1,
+    F2,
+    F3,
+    F4,
+    F5,
+    F6,
+    F7,
+    F8,
+    F9,
+    F10,
+    F11,
+    F12,
+    F13,
+    F14,
+    F15,
+    F16,
+    F17,
+    F18,
+    F19,
+    F20,
+    F21,
+    F22,
+    F23,
+    F24,
 
     // Modifiers
     ShiftLeft,
@@ -245,6 +298,152 @@ impl VirtualKey {
         }
     }
 
+    /// Returns the Linux evdev keycode for this key.
+    ///
+    /// Returns 0 for keys that don't have a direct evdev mapping
+    /// (modifier-only keys, media keys, etc.).
+    pub fn evdev_code(&self) -> u32 {
+        match self {
+            Self::A => 30,
+            Self::B => 48,
+            Self::C => 46,
+            Self::D => 32,
+            Self::E => 18,
+            Self::F => 33,
+            Self::G => 34,
+            Self::H => 35,
+            Self::I => 23,
+            Self::J => 36,
+            Self::K => 37,
+            Self::L => 38,
+            Self::M => 50,
+            Self::N => 49,
+            Self::O => 24,
+            Self::P => 25,
+            Self::Q => 16,
+            Self::R => 19,
+            Self::S => 31,
+            Self::T => 20,
+            Self::U => 22,
+            Self::V => 47,
+            Self::W => 17,
+            Self::X => 45,
+            Self::Y => 21,
+            Self::Z => 44,
+
+            Self::Key0 => 11,
+            Self::Key1 => 2,
+            Self::Key2 => 3,
+            Self::Key3 => 4,
+            Self::Key4 => 5,
+            Self::Key5 => 6,
+            Self::Key6 => 7,
+            Self::Key7 => 8,
+            Self::Key8 => 9,
+            Self::Key9 => 10,
+
+            Self::F1 => 59,
+            Self::F2 => 60,
+            Self::F3 => 61,
+            Self::F4 => 62,
+            Self::F5 => 63,
+            Self::F6 => 64,
+            Self::F7 => 65,
+            Self::F8 => 66,
+            Self::F9 => 67,
+            Self::F10 => 68,
+            Self::F11 => 87,
+            Self::F12 => 88,
+            Self::F13 => 183,
+            Self::F14 => 184,
+            Self::F15 => 185,
+            Self::F16 => 186,
+            Self::F17 => 187,
+            Self::F18 => 188,
+            Self::F19 => 189,
+            Self::F20 => 190,
+            Self::F21 => 191,
+            Self::F22 => 192,
+            Self::F23 => 193,
+            Self::F24 => 194,
+
+            Self::ControlLeft => 29,
+            Self::ControlRight => 97,
+            Self::ShiftLeft => 42,
+            Self::ShiftRight => 54,
+            Self::AltLeft => 56,
+            Self::AltRight => 100,
+            Self::SuperLeft => 125,
+            Self::SuperRight => 126,
+
+            Self::Tab => 15,
+            Self::Escape => 1,
+            Self::Space => 57,
+            Self::Enter => 28,
+            Self::Backspace => 14,
+            Self::Delete => 111,
+            Self::Insert => 110,
+            Self::Home => 102,
+            Self::End => 107,
+            Self::PageUp => 104,
+            Self::PageDown => 109,
+            Self::Up => 103,
+            Self::Down => 108,
+            Self::Left => 105,
+            Self::Right => 106,
+            Self::PrintScreen => 99,
+            Self::ScrollLock => 70,
+            Self::Pause => 119,
+            Self::CapsLock => 58,
+
+            Self::Minus => 12,
+            Self::Equal => 13,
+            Self::LeftBracket => 26,
+            Self::RightBracket => 27,
+            Self::Backslash => 43,
+            Self::Semicolon => 39,
+            Self::Quote => 40,
+            Self::Comma => 51,
+            Self::Period => 52,
+            Self::Slash => 53,
+            Self::Backtick => 41,
+
+            Self::Numpad0 => 82,
+            Self::Numpad1 => 79,
+            Self::Numpad2 => 80,
+            Self::Numpad3 => 81,
+            Self::Numpad4 => 75,
+            Self::Numpad5 => 76,
+            Self::Numpad6 => 77,
+            Self::Numpad7 => 71,
+            Self::Numpad8 => 72,
+            Self::Numpad9 => 73,
+            Self::NumpadAdd => 78,
+            Self::NumpadSubtract => 74,
+            Self::NumpadMultiply => 55,
+            Self::NumpadDivide => 98,
+            Self::NumpadDecimal => 83,
+            Self::NumpadEnter => 96,
+            Self::NumpadLock => 69,
+
+            Self::MediaPlay => 164,
+            Self::MediaPause => 164,
+            Self::MediaStop => 166,
+            Self::MediaNext => 163,
+            Self::MediaPrev => 165,
+            Self::VolumeUp => 115,
+            Self::VolumeDown => 114,
+            Self::Mute => 113,
+
+            Self::BrowserBack => 158,
+            Self::BrowserForward => 159,
+            Self::BrowserRefresh => 181,
+
+            Self::Meta => 0,
+            Self::Unknown(_) => 0,
+        }
+    }
+
     /// Returns true if this key is a modifier key.
     pub fn is_modifier(&self) -> bool {
         matches!(
@@ -265,10 +464,49 @@ impl VirtualKey {
     pub fn is_letter(&self) -> bool {
         matches!(
             self,
-            Self::A | Self::B | Self::C | Self::D | Self::E | Self::F | Self::G
-                | Self::H | Self::I | Self::J | Self::K | Self::L | Self::M
-                | Self::N | Self::O | Self::P | Self::Q | Self::R | Self::S
-                | Self::T | Self::U | Self::V | Self::W | Self::X | Self::Y | Self::Z
+            Self::A
+                | Self::B
+                | Self::C
+                | Self::D
+                | Self::E
+                | Self::F
+                | Self::G
+                | Self::H
+                | Self::I
+                | Self::J
+                | Self::K
+                | Self::L
+                | Self::M
+                | Self::N
+                | Self::O
+                | Self::P
+                | Self::Q
+                | Self::R
+                | Self::S
+                | Self::T
+                | Self::U
+                | Self::V
+                | Self::W
+                | Self::X
+                | Self::Y
+                | Self::Z
+        )
+    }
+
+    /// Returns true if this is a numpad digit key (Numpad0-Numpad9).
+    pub fn is_numpad_digit(&self) -> bool {
+        matches!(
+            self,
+            Self::Numpad0
+                | Self::Numpad1
+                | Self::Numpad2
+                | Self::Numpad3
+                | Self::Numpad4
+                | Self::Numpad5
+                | Self::Numpad6
+                | Self::Numpad7
+                | Self::Numpad8
+                | Self::Numpad9
         )
     }
 

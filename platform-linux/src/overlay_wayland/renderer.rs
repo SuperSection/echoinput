@@ -14,14 +14,12 @@ use tracing::{debug, error, info, trace, warn};
 
 use wayland_client::globals::{registry_queue_init, GlobalListContents};
 use wayland_client::protocol::{
-    wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_region, wl_registry, wl_seat,
-    wl_shm, wl_shm_pool, wl_surface,
+    wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_region, wl_registry, wl_seat, wl_shm,
+    wl_shm_pool, wl_surface,
 };
 
 use wayland_client::{delegate_noop, Connection, Dispatch, Proxy, QueueHandle, WEnum};
-use wayland_protocols_wlr::layer_shell::v1::client::{
-    zwlr_layer_shell_v1, zwlr_layer_surface_v1,
-};
+use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 const KEYCAP_GAP: f64 = 8.0;
 const ROW_GAP: f64 = 8.0;
@@ -53,11 +51,7 @@ fn parse_hex_color(hex: &str) -> (f64, f64, f64, f64) {
 
 /// Darken a color by a factor (0.0 = original, 1.0 = black).
 fn darken(r: f64, g: f64, b: f64, factor: f64) -> (f64, f64, f64) {
-    (
-        r * (1.0 - factor),
-        g * (1.0 - factor),
-        b * (1.0 - factor),
-    )
+    (r * (1.0 - factor), g * (1.0 - factor), b * (1.0 - factor))
 }
 
 enum RendererCommand {
@@ -215,13 +209,17 @@ impl WaylandRenderer {
 #[async_trait::async_trait]
 impl platform::overlay::OverlayRenderer for WaylandRenderer {
     async fn start(&mut self, config: OverlayConfig) -> anyhow::Result<()> {
-        let bus = self.bus.take().ok_or_else(|| {
-            WaylandError::Connection("No MessageBus provided".into())
-        })?;
+        let bus = self
+            .bus
+            .take()
+            .ok_or_else(|| WaylandError::Connection("No MessageBus provided".into()))?;
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         self.cmd_tx = Some(cmd_tx);
 
-        let shutdown = self.shutdown.take().unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
+        let shutdown = self
+            .shutdown
+            .take()
+            .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
 
         let handle = tokio::task::spawn_blocking(move || {
             if let Err(e) = run_wayland_event_loop(bus, config, cmd_rx, shutdown) {
@@ -288,7 +286,9 @@ impl AppState {
             configure_width: 0,
             configure_height: 0,
             configure_serial: None,
-            xkb_context: Some(xkbcommon::xkb::Context::new(xkbcommon::xkb::CONTEXT_NO_FLAGS)),
+            xkb_context: Some(xkbcommon::xkb::Context::new(
+                xkbcommon::xkb::CONTEXT_NO_FLAGS,
+            )),
             xkb_keymap: None,
             xkb_state: None,
             _keyboard: None,
@@ -301,7 +301,11 @@ impl AppState {
 
     fn find_output(&self, monitor: Option<&str>) -> Option<(usize, &OutputInfo)> {
         match monitor {
-            Some(name) => self.outputs.iter().enumerate().find(|(_, o)| o.name == name),
+            Some(name) => self
+                .outputs
+                .iter()
+                .enumerate()
+                .find(|(_, o)| o.name == name),
             None => self.outputs.first().map(|o| (0, o)),
         }
     }
@@ -322,8 +326,7 @@ fn run_wayland_event_loop(
     mut cmd_rx: mpsc::UnboundedReceiver<RendererCommand>,
     shutdown: Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
-    let conn = Connection::connect_to_env()
-        .map_err(|e| WaylandError::Connection(e.to_string()))?;
+    let conn = Connection::connect_to_env().map_err(|e| WaylandError::Connection(e.to_string()))?;
 
     let (globals, mut event_queue) = registry_queue_init::<AppState>(&conn)
         .map_err(|e| WaylandError::Connection(format!("registry_queue_init: {}", e)))?;
@@ -368,7 +371,8 @@ fn run_wayland_event_loop(
                 state.output_proxies.push(proxy);
             }
             "wl_seat" => {
-                let _seat: wl_seat::WlSeat = globals.registry().bind(g.name, g.version.min(7), &qh, ());
+                let _seat: wl_seat::WlSeat =
+                    globals.registry().bind(g.name, g.version.min(7), &qh, ());
                 debug!("Bound wl_seat global");
             }
             _ => {}
@@ -381,14 +385,20 @@ fn run_wayland_event_loop(
         .roundtrip(&mut state)
         .map_err(|e| WaylandError::Connection(format!("roundtrip failed: {}", e)))?;
 
-    debug!(xkb_loaded = state.xkb_keymap.is_some(), "After first roundtrip");
+    debug!(
+        xkb_loaded = state.xkb_keymap.is_some(),
+        "After first roundtrip"
+    );
 
     // Second roundtrip: picks up the wl_keyboard keymap event
     event_queue
         .roundtrip(&mut state)
         .map_err(|e| WaylandError::Connection(format!("second roundtrip failed: {}", e)))?;
 
-    debug!(xkb_loaded = state.xkb_keymap.is_some(), "After second roundtrip");
+    debug!(
+        xkb_loaded = state.xkb_keymap.is_some(),
+        "After second roundtrip"
+    );
 
     for info in &state.outputs {
         info!(
@@ -504,23 +514,36 @@ fn run_wayland_event_loop(
             }
         }
 
-        if !state.configured && start_time.elapsed() > std::time::Duration::from_secs(5) && !configure_received {
+        if !state.configured
+            && start_time.elapsed() > std::time::Duration::from_secs(5)
+            && !configure_received
+        {
             configure_received = true;
             warn!("No configure received after 5s — forcing configured state");
             state.configured = true;
             if state.configure_width == 0 {
-                state.configure_width = state.outputs.first().map(|o| o.width as u32).unwrap_or(1920);
+                state.configure_width = state
+                    .outputs
+                    .first()
+                    .map(|o| o.width as u32)
+                    .unwrap_or(1920);
             }
             if state.configure_height == 0 {
-                state.configure_height = state.outputs.first().map(|o| o.height as u32).unwrap_or(1080);
+                state.configure_height = state
+                    .outputs
+                    .first()
+                    .map(|o| o.height as u32)
+                    .unwrap_or(1080);
             }
         }
 
         if !configure_logged && state.configured {
             configure_logged = true;
             configure_received = true;
-            info!("Compositor configure received — overlay ready (w={} h={})",
-                state.configure_width, state.configure_height);
+            info!(
+                "Compositor configure received — overlay ready (w={} h={})",
+                state.configure_width, state.configure_height
+            );
             if !current_combos.is_empty() {
                 animation.show(config.opacity);
             }
@@ -532,23 +555,38 @@ fn run_wayland_event_loop(
                     DisplayEvent::Shortcut(combo) => {
                         debug!("Renderer received shortcut: {}", combo.display);
                         // Merge consecutive plain keystrokes into one row
-                        if combo.modifiers.is_empty() {
+                        if combo.modifiers.is_empty() && combo.resolved_text.is_some() {
                             if let Some(front) = current_combos.first() {
                                 if front.modifiers.is_empty() {
                                     let mut keys = front.key_sequence.clone();
+                                    let mut chars = front.resolved_chars.clone();
                                     if keys.is_empty() {
                                         if let Some(prev_key) = front.key {
                                             keys.push(prev_key);
+                                            // Recover resolved char from front combo's resolved_text
+                                            if let Some(ref rt) = front.resolved_text {
+                                                chars.push(rt.clone());
+                                            }
                                         }
                                     }
                                     if let Some(new_key) = combo.key {
                                         keys.push(new_key);
                                     }
+                                    if let Some(ref new_char) = combo.resolved_text {
+                                        chars.push(new_char.clone());
+                                    }
                                     // Cap sequence length — oldest keys vanish
                                     while keys.len() > MAX_SEQUENCE_LENGTH {
                                         keys.remove(0);
+                                        if !chars.is_empty() {
+                                            chars.remove(0);
+                                        }
                                     }
-                                    let merged = ShortcutCombo::sequence(keys);
+                                    let merged = if !chars.is_empty() {
+                                        ShortcutCombo::resolved_sequence(keys, chars)
+                                    } else {
+                                        ShortcutCombo::sequence(keys)
+                                    };
                                     current_combos[0] = merged;
                                     animation.refresh();
                                     continue;
@@ -589,7 +627,9 @@ fn run_wayland_event_loop(
 
             // When animation finishes fading to Idle, clear the combo list
             // so the next keypress starts fresh — no stale rows reappear.
-            if needs_redraw && animation.state() == crate::overlay_wayland::animation::AnimationState::Idle {
+            if needs_redraw
+                && animation.state() == crate::overlay_wayland::animation::AnimationState::Idle
+            {
                 current_combos.clear();
             }
 
@@ -628,7 +668,13 @@ fn run_wayland_event_loop(
                         };
                         if needs_realloc && *ready_flag {
                             *active_buf = None;
-                            match ShmBuffer::create(&wayland_globals, render_w, render_h, active_id, &qh) {
+                            match ShmBuffer::create(
+                                &wayland_globals,
+                                render_w,
+                                render_h,
+                                active_id,
+                                &qh,
+                            ) {
                                 Ok(new_buf) => {
                                     *active_buf = Some(new_buf);
                                 }
@@ -641,9 +687,14 @@ fn run_wayland_event_loop(
                         if let Some(ref buf) = *active_buf {
                             if *ready_flag {
                                 let offset_x = match config.position {
-                                    OverlayPosition::TopLeft | OverlayPosition::BottomLeft => config.margin_x as f64,
+                                    OverlayPosition::TopLeft | OverlayPosition::BottomLeft => {
+                                        config.margin_x as f64
+                                    }
                                     OverlayPosition::TopRight | OverlayPosition::BottomRight => {
-                                        (buf.width as f64 - content_w as f64 - config.margin_x as f64).max(0.0)
+                                        (buf.width as f64
+                                            - content_w as f64
+                                            - config.margin_x as f64)
+                                            .max(0.0)
                                     }
                                     _ => ((buf.width - content_w) / 2).max(0) as f64,
                                 };
@@ -703,7 +754,13 @@ fn run_wayland_event_loop(
                     };
                     if needs_realloc && *ready_flag {
                         *active_buf = None;
-                        match ShmBuffer::create(&wayland_globals, render_w, render_h, active_id, &qh) {
+                        match ShmBuffer::create(
+                            &wayland_globals,
+                            render_w,
+                            render_h,
+                            active_id,
+                            &qh,
+                        ) {
                             Ok(new_buf) => {
                                 *active_buf = Some(new_buf);
                             }
@@ -794,16 +851,24 @@ fn create_layer_surface(
 
     layer_surface.set_anchor(anchor);
     layer_surface.set_exclusive_zone(-1);
-    layer_surface.set_keyboard_interactivity(
-        zwlr_layer_surface_v1::KeyboardInteractivity::None,
-    );
+    layer_surface.set_keyboard_interactivity(zwlr_layer_surface_v1::KeyboardInteractivity::None);
 
     let empty_region = globals.compositor.create_region(qh, ());
     surface.set_input_region(Some(&empty_region));
     empty_region.destroy();
 
-    let output_width = state.outputs.first().map(|o| o.width).filter(|&w| w > 0).unwrap_or(1920);
-    let output_height = state.outputs.first().map(|o| o.height).filter(|&h| h > 0).unwrap_or(1080);
+    let output_width = state
+        .outputs
+        .first()
+        .map(|o| o.width)
+        .filter(|&w| w > 0)
+        .unwrap_or(1920);
+    let output_height = state
+        .outputs
+        .first()
+        .map(|o| o.height)
+        .filter(|&h| h > 0)
+        .unwrap_or(1080);
     layer_surface.set_size(output_width as u32, output_height as u32);
 
     surface.commit();
@@ -825,10 +890,16 @@ fn position_to_anchor(config: &OverlayConfig) -> zwlr_layer_surface_v1::Anchor {
 }
 
 fn combo_to_key_parts(combo: &ShortcutCombo, variant: &TextVariant) -> Vec<String> {
-    let mut parts = Vec::new();
+    // Character events: show resolved text as a single keycap
+    if let Some(ref text) = combo.resolved_text {
+        return vec![text.clone()];
+    }
 
-    // For key sequences, return all keys from the sequence
+    // For key sequences, use resolved_chars if available
     if combo.is_sequence() {
+        if !combo.resolved_chars.is_empty() {
+            return combo.resolved_chars.clone();
+        }
         return combo
             .key_sequence
             .iter()
@@ -836,6 +907,7 @@ fn combo_to_key_parts(combo: &ShortcutCombo, variant: &TextVariant) -> Vec<Strin
             .collect();
     }
 
+    let mut parts = Vec::new();
     if combo.modifiers.ctrl {
         parts.push(apply_modifier_label("Ctrl", variant));
     }
@@ -849,7 +921,8 @@ fn combo_to_key_parts(combo: &ShortcutCombo, variant: &TextVariant) -> Vec<Strin
         parts.push(apply_modifier_label("Super", variant));
     }
     if let Some(key) = &combo.key {
-        parts.push(apply_text_variant(&key.label(), variant));
+        let key_label = ShortcutCombo::get_key_display(&combo.modifiers, key);
+        parts.push(apply_text_variant(&key_label, variant));
     }
     parts
 }
@@ -942,8 +1015,8 @@ fn compute_surface_size(combos: &[ShortcutCombo], config: &OverlayConfig) -> (i3
     }
 
     let keycap_h = font_size + padding_y * 2.0;
-    let content_h = visible.len() as f64 * keycap_h
-        + (visible.len().saturating_sub(1)) as f64 * ROW_GAP;
+    let content_h =
+        visible.len() as f64 * keycap_h + (visible.len().saturating_sub(1)) as f64 * ROW_GAP;
 
     let margin_x = config.margin_x as f64;
     let margin_y = config.margin_y as f64;
@@ -1008,7 +1081,16 @@ fn render_clear_frame(shm: &ShmBuffer) {
     shm.write_pixels(&data);
 }
 
-fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], config: &OverlayConfig, opacity: f32, slide_offset: f32, scale: f32, offset_x: f64, position: OverlayPosition) {
+fn render_keycaps(
+    shm: &ShmBuffer,
+    combos: &[ShortcutCombo],
+    config: &OverlayConfig,
+    opacity: f32,
+    slide_offset: f32,
+    scale: f32,
+    offset_x: f64,
+    position: OverlayPosition,
+) {
     let width = shm.width;
     let height = shm.height;
 
@@ -1025,14 +1107,14 @@ fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], config: &OverlayCon
     let modifier_border_color = parse_hex_color(&config.border.modifier_color);
     let background_color = parse_hex_color(&config.background.color);
 
-    let mut image_surface =
-        match cairo::ImageSurface::create(cairo::Format::ARgb32, width, height) {
-            Ok(s) => s,
-            Err(e) => {
-                error!("Cairo surface create failed: {:?}", e);
-                return;
-            }
-        };
+    let mut image_surface = match cairo::ImageSurface::create(cairo::Format::ARgb32, width, height)
+    {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Cairo surface create failed: {:?}", e);
+            return;
+        }
+    };
 
     let visible: Vec<&ShortcutCombo> = combos.iter().take(MAX_HISTORY_ROWS).collect();
 
@@ -1071,19 +1153,19 @@ fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], config: &OverlayCon
 
         // Compute content height for vertical positioning
         let keycap_h = font_size + padding_y * 2.0;
-        let content_h = visible.len() as f64 * keycap_h
-            + (visible.len().saturating_sub(1)) as f64 * ROW_GAP;
+        let content_h =
+            visible.len() as f64 * keycap_h + (visible.len().saturating_sub(1)) as f64 * ROW_GAP;
 
         let margin_y = config.margin_y as f64;
 
         // Compute initial Y based on position
         let mut y = match position {
-            OverlayPosition::BottomLeft | OverlayPosition::BottomRight | OverlayPosition::BottomCenter => {
+            OverlayPosition::BottomLeft
+            | OverlayPosition::BottomRight
+            | OverlayPosition::BottomCenter => {
                 (height as f64 - content_h - margin_y + slide_y).max(0.0)
             }
-            OverlayPosition::Center => {
-                ((height as f64 - content_h) / 2.0 + slide_y).max(0.0)
-            }
+            OverlayPosition::Center => ((height as f64 - content_h) / 2.0 + slide_y).max(0.0),
             OverlayPosition::TopLeft | OverlayPosition::TopRight | OverlayPosition::TopCenter => {
                 margin_y + slide_y
             }
@@ -1104,19 +1186,48 @@ fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], config: &OverlayCon
                 let is_modifier = is_modifier_label(label);
 
                 // Determine colors based on whether this is a modifier
-                let (bg_r, bg_g, bg_b, bg2_r, bg2_g, bg2_b, brd_r, brd_g, brd_b, txt_r, txt_g, txt_b) = if is_modifier && config.colors.highlight_modifiers {
+                let (
+                    bg_r,
+                    bg_g,
+                    bg_b,
+                    bg2_r,
+                    bg2_g,
+                    bg2_b,
+                    brd_r,
+                    brd_g,
+                    brd_b,
+                    txt_r,
+                    txt_g,
+                    txt_b,
+                ) = if is_modifier && config.colors.highlight_modifiers {
                     (
-                        modifier_primary.0, modifier_primary.1, modifier_primary.2,
-                        modifier_secondary.0, modifier_secondary.1, modifier_secondary.2,
-                        modifier_border_color.0, modifier_border_color.1, modifier_border_color.2,
-                        modifier_text_color.0, modifier_text_color.1, modifier_text_color.2,
+                        modifier_primary.0,
+                        modifier_primary.1,
+                        modifier_primary.2,
+                        modifier_secondary.0,
+                        modifier_secondary.1,
+                        modifier_secondary.2,
+                        modifier_border_color.0,
+                        modifier_border_color.1,
+                        modifier_border_color.2,
+                        modifier_text_color.0,
+                        modifier_text_color.1,
+                        modifier_text_color.2,
                     )
                 } else {
                     (
-                        keycap_primary.0, keycap_primary.1, keycap_primary.2,
-                        keycap_secondary.0, keycap_secondary.1, keycap_secondary.2,
-                        border_color.0, border_color.1, border_color.2,
-                        text_color.0, text_color.1, text_color.2,
+                        keycap_primary.0,
+                        keycap_primary.1,
+                        keycap_primary.2,
+                        keycap_secondary.0,
+                        keycap_secondary.1,
+                        keycap_secondary.2,
+                        border_color.0,
+                        border_color.1,
+                        border_color.2,
+                        text_color.0,
+                        text_color.1,
+                        text_color.2,
                     )
                 };
 
@@ -1135,33 +1246,37 @@ fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], config: &OverlayCon
                 match config.keycap_style {
                     KeycapStyle::Minimal => {
                         // Flat solid color, no gradient
-                        let _ = cr.set_source_rgba(
-                            bg_r, bg_g, bg_b,
-                            row_opacity as f64 * 0.9,
-                        );
+                        let _ = cr.set_source_rgba(bg_r, bg_g, bg_b, row_opacity as f64 * 0.9);
                         let _ = cr.fill();
                     }
                     KeycapStyle::LowProfile => {
                         // Darker, flatter
                         let (dark_r, dark_g, dark_b) = darken(bg_r, bg_g, bg_b, 0.2);
-                        let _ = cr.set_source_rgba(
-                            dark_r, dark_g, dark_b,
-                            row_opacity as f64 * 0.85,
-                        );
+                        let _ =
+                            cr.set_source_rgba(dark_r, dark_g, dark_b, row_opacity as f64 * 0.85);
                         let _ = cr.fill();
                     }
                     _ => {
                         // Gradient background (Laptop, PBT)
                         if config.colors.use_gradient {
                             let pattern = cairo::LinearGradient::new(0.0, y, 0.0, y + keycap_h);
-                            pattern.add_color_stop_rgba(0.0, bg2_r, bg2_g, bg2_b, row_opacity as f64 * 0.95);
-                            pattern.add_color_stop_rgba(1.0, bg_r, bg_g, bg_b, row_opacity as f64 * 0.9);
-                            let _ = cr.set_source(&pattern);
-                        } else {
-                            let _ = cr.set_source_rgba(
-                                bg_r, bg_g, bg_b,
+                            pattern.add_color_stop_rgba(
+                                0.0,
+                                bg2_r,
+                                bg2_g,
+                                bg2_b,
+                                row_opacity as f64 * 0.95,
+                            );
+                            pattern.add_color_stop_rgba(
+                                1.0,
+                                bg_r,
+                                bg_g,
+                                bg_b,
                                 row_opacity as f64 * 0.9,
                             );
+                            let _ = cr.set_source(&pattern);
+                        } else {
+                            let _ = cr.set_source_rgba(bg_r, bg_g, bg_b, row_opacity as f64 * 0.9);
                         }
                         let _ = cr.fill_preserve();
                     }
@@ -1169,10 +1284,7 @@ fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], config: &OverlayCon
 
                 // Draw border (unless minimal style)
                 if config.keycap_style != KeycapStyle::Minimal && config.border.enabled {
-                    let _ = cr.set_source_rgba(
-                        brd_r, brd_g, brd_b,
-                        row_opacity as f64 * 0.6,
-                    );
+                    let _ = cr.set_source_rgba(brd_r, brd_g, brd_b, row_opacity as f64 * 0.6);
                     cr.set_line_width(config.border.width as f64);
                     let _ = cr.stroke();
                 }
@@ -1180,7 +1292,14 @@ fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], config: &OverlayCon
                 // Draw top highlight (subtle shine) - not for minimal/lowprofile
                 if matches!(config.keycap_style, KeycapStyle::Laptop | KeycapStyle::PBT) {
                     let _ = cr.new_path();
-                    draw_rounded_rect(&cr, x + 1.0, y + 1.0, kw - 2.0, keycap_h * 0.4, corner_radius - 1.0);
+                    draw_rounded_rect(
+                        &cr,
+                        x + 1.0,
+                        y + 1.0,
+                        kw - 2.0,
+                        keycap_h * 0.4,
+                        corner_radius - 1.0,
+                    );
                     let highlight = cairo::LinearGradient::new(0.0, y, 0.0, y + keycap_h * 0.4);
                     highlight.add_color_stop_rgba(0.0, 1.0, 1.0, 1.0, 0.08 * row_opacity as f64);
                     highlight.add_color_stop_rgba(1.0, 1.0, 1.0, 1.0, 0.0);
@@ -1193,7 +1312,9 @@ fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], config: &OverlayCon
                     let _ = cr.new_path();
                     draw_rounded_rect(&cr, x, y, kw, keycap_h, corner_radius);
                     let _ = cr.set_source_rgba(
-                        background_color.0, background_color.1, background_color.2,
+                        background_color.0,
+                        background_color.1,
+                        background_color.2,
                         background_color.3 * row_opacity as f64,
                     );
                     let _ = cr.fill();
@@ -1220,8 +1341,7 @@ fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], config: &OverlayCon
                 if let Ok(extents) = cr.text_extents(&display_label) {
                     let visual_w = extents.x_bearing() + extents.width();
                     let text_x = x + (kw - visual_w) / 2.0 - extents.x_bearing();
-                    let text_y =
-                        y + (keycap_h - extents.height()) / 2.0 - extents.y_bearing();
+                    let text_y = y + (keycap_h - extents.height()) / 2.0 - extents.y_bearing();
 
                     // Text shadow (not for minimal style)
                     if config.keycap_style != KeycapStyle::Minimal {
@@ -1249,12 +1369,9 @@ fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], config: &OverlayCon
                         if let Ok(sep_ext) = cr.text_extents("+") {
                             let sep_visual_w = sep_ext.x_bearing() + sep_ext.width();
                             let sep_x = sep_center_x - sep_visual_w / 2.0;
-                            let sep_y = y + (keycap_h - sep_ext.height()) / 2.0
-                                - sep_ext.y_bearing();
-                            let _ = cr.set_source_rgba(
-                                0.55, 0.55, 0.6,
-                                row_opacity as f64 * 0.8,
-                            );
+                            let sep_y =
+                                y + (keycap_h - sep_ext.height()) / 2.0 - sep_ext.y_bearing();
+                            let _ = cr.set_source_rgba(0.55, 0.55, 0.6, row_opacity as f64 * 0.8);
                             cr.move_to(sep_x, sep_y);
                             let _ = cr.show_text("+");
                         }
@@ -1284,17 +1401,20 @@ fn render_keycaps(shm: &ShmBuffer, combos: &[ShortcutCombo], config: &OverlayCon
 }
 
 fn is_modifier_label(label: &str) -> bool {
-    matches!(
-        label,
-        "Ctrl" | "Alt" | "Shift" | "Super" | "Meta"
-    )
+    matches!(label, "Ctrl" | "Alt" | "Shift" | "Super" | "Meta")
 }
 
 fn draw_rounded_rect(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, r: f64) {
     cr.new_sub_path();
     cr.arc(x + w - r, y + r, r, -std::f64::consts::FRAC_PI_2, 0.0);
     cr.arc(x + w - r, y + h - r, r, 0.0, std::f64::consts::FRAC_PI_2);
-    cr.arc(x + r, y + h - r, r, std::f64::consts::FRAC_PI_2, std::f64::consts::PI);
+    cr.arc(
+        x + r,
+        y + h - r,
+        r,
+        std::f64::consts::FRAC_PI_2,
+        std::f64::consts::PI,
+    );
     cr.arc(
         x + r,
         y + r,
@@ -1350,30 +1470,26 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for AppState {
                 name,
                 interface,
                 version,
-            } => {
-                match interface.as_str() {
-                    "wl_output" => {
-                        let proxy: wl_output::WlOutput =
-                            _proxy.bind(name, version.min(4), qh, ());
-                        let proxy_id = proxy.id().protocol_id();
-                        state.outputs.push(OutputInfo {
-                            name: String::new(),
-                            scale: 1,
-                            width: 0,
-                            height: 0,
-                            proxy_id,
-                            global_id: name,
-                        });
-                        state.output_proxies.push(proxy);
-                    }
-                    "wl_seat" => {
-                        let _seat: wl_seat::WlSeat =
-                            _proxy.bind(name, version.min(7), qh, ());
-                        debug!("Bound wl_seat");
-                    }
-                    _ => {}
+            } => match interface.as_str() {
+                "wl_output" => {
+                    let proxy: wl_output::WlOutput = _proxy.bind(name, version.min(4), qh, ());
+                    let proxy_id = proxy.id().protocol_id();
+                    state.outputs.push(OutputInfo {
+                        name: String::new(),
+                        scale: 1,
+                        width: 0,
+                        height: 0,
+                        proxy_id,
+                        global_id: name,
+                    });
+                    state.output_proxies.push(proxy);
                 }
-            }
+                "wl_seat" => {
+                    let _seat: wl_seat::WlSeat = _proxy.bind(name, version.min(7), qh, ());
+                    debug!("Bound wl_seat");
+                }
+                _ => {}
+            },
             wl_registry::Event::GlobalRemove { name } => {
                 if let Some(idx) = state.outputs.iter().position(|o| o.global_id == name) {
                     state.outputs.remove(idx);
@@ -1416,11 +1532,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for AppState {
         _qh: &QueueHandle<Self>,
     ) {
         match event {
-            wl_keyboard::Event::Keymap {
-                format,
-                fd,
-                size,
-            } => {
+            wl_keyboard::Event::Keymap { format, fd, size } => {
                 if format == WEnum::Value(wl_keyboard::KeymapFormat::XkbV1) {
                     debug!(size, "Got keymap, loading via mmap");
 
@@ -1474,14 +1586,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for AppState {
             } => {
                 // Update XKB state with modifier changes
                 if let Some(ref mut xkb_state) = state.xkb_state {
-                    xkb_state.update_mask(
-                        mods_depressed,
-                        mods_latched,
-                        mods_locked,
-                        0,
-                        0,
-                        0,
-                    );
+                    xkb_state.update_mask(mods_depressed, mods_latched, mods_locked, 0, 0, 0);
                 }
             }
             wl_keyboard::Event::RepeatInfo { rate: _, delay: _ } => {

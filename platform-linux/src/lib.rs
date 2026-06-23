@@ -11,11 +11,15 @@ use platform::overlay::OverlayRendererFactory;
 pub struct EvdevCaptureFactory;
 
 impl EvdevCaptureFactory {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl Default for EvdevCaptureFactory {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl KeyboardCaptureFactory for EvdevCaptureFactory {
@@ -34,11 +38,17 @@ pub struct LinuxWaylandRendererFactory {
 }
 
 impl LinuxWaylandRendererFactory {
-    pub fn new() -> Self { Self { inner: overlay_wayland::WaylandRendererFactory::new() } }
+    pub fn new() -> Self {
+        Self {
+            inner: overlay_wayland::WaylandRendererFactory::new(),
+        }
+    }
 }
 
 impl Default for LinuxWaylandRendererFactory {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl OverlayRendererFactory for LinuxWaylandRendererFactory {
@@ -57,11 +67,17 @@ pub struct LinuxX11RendererFactory {
 }
 
 impl LinuxX11RendererFactory {
-    pub fn new() -> Self { Self { inner: overlay_x11::X11RendererFactory::new() } }
+    pub fn new() -> Self {
+        Self {
+            inner: overlay_x11::X11RendererFactory::new(),
+        }
+    }
 }
 
 impl Default for LinuxX11RendererFactory {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl OverlayRendererFactory for LinuxX11RendererFactory {

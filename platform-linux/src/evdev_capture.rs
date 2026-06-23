@@ -73,10 +73,7 @@ impl EvdevCapture {
         })
     }
 
-    pub fn from_device_with_sender(
-        path: &Path,
-        tx: broadcast::Sender<InputEvent>,
-    ) -> Result<Self> {
+    pub fn from_device_with_sender(path: &Path, tx: broadcast::Sender<InputEvent>) -> Result<Self> {
         let device = Device::open(path)
             .with_context(|| format!("Failed to open device: {}", path.display()))?;
         device
@@ -134,7 +131,10 @@ impl EvdevCapture {
             eprintln!("  Check permissions: ls -la /dev/input/event*");
             eprintln!("  Fix: sudo usermod -aG input $USER  (then relogin)");
         } else {
-            eprintln!("DEBUG: Found {} keyboard device(s) in /dev/input/event*", devices.len());
+            eprintln!(
+                "DEBUG: Found {} keyboard device(s) in /dev/input/event*",
+                devices.len()
+            );
             for p in &devices {
                 eprintln!("  - {}", p.display());
             }
@@ -214,7 +214,10 @@ impl EvdevCapture {
         }
 
         info!(devices = devices.len(), "Capture loop started");
-        eprintln!("DEBUG: Capture loop started with {} device(s)", devices.len());
+        eprintln!(
+            "DEBUG: Capture loop started with {} device(s)",
+            devices.len()
+        );
 
         let in_terminal = unsafe { libc::isatty(libc::STDIN_FILENO) != 0 };
 
@@ -298,10 +301,7 @@ impl EvdevCapture {
         info!("Capture loop ended");
     }
 
-    fn process_evdev_event(
-        ev: &EvdevEvent,
-        tx: &broadcast::Sender<InputEvent>,
-    ) -> Result<()> {
+    fn process_evdev_event(ev: &EvdevEvent, tx: &broadcast::Sender<InputEvent>) -> Result<()> {
         if ev.event_type() != EventType::KEY {
             return Ok(());
         }
@@ -320,7 +320,10 @@ impl EvdevCapture {
             KeyState::Released
         };
 
-        eprintln!("DEBUG: evdev key={:?} state={:?} scancode={}", key, state, scancode);
+        eprintln!(
+            "DEBUG: evdev key={:?} state={:?} scancode={}",
+            key, state, scancode
+        );
 
         let event = InputEvent::Keyboard(KeyboardEvent {
             key,

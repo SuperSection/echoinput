@@ -75,7 +75,10 @@ impl FileConfig {
         };
 
         if !path.exists() {
-            info!("No config file found at {}, creating default", path.display());
+            info!(
+                "No config file found at {}, creating default",
+                path.display()
+            );
             let defaults = Self::defaults_toml();
             if let Err(e) = defaults.save() {
                 warn!("Failed to write default config: {}", e);
@@ -90,12 +93,20 @@ impl FileConfig {
                     config
                 }
                 Err(e) => {
-                    warn!("Failed to parse config at {}: {}. Using defaults.", path.display(), e);
+                    warn!(
+                        "Failed to parse config at {}: {}. Using defaults.",
+                        path.display(),
+                        e
+                    );
                     Self::defaults_toml()
                 }
             },
             Err(e) => {
-                warn!("Failed to read config at {}: {}. Using defaults.", path.display(), e);
+                warn!(
+                    "Failed to read config at {}: {}. Using defaults.",
+                    path.display(),
+                    e
+                );
                 Self::defaults_toml()
             }
         }
@@ -129,43 +140,96 @@ impl FileConfig {
     /// Convert to `OverlayConfig`, filling in defaults for missing fields.
     pub fn to_overlay_config(&self) -> OverlayConfig {
         OverlayConfig {
-            position: self.position.as_deref().and_then(parse_position).unwrap_or(OverlayPosition::BottomCenter),
-            scale: self.scale.as_deref().and_then(parse_scale).unwrap_or(OverlayScale::Medium),
+            position: self
+                .position
+                .as_deref()
+                .and_then(parse_position)
+                .unwrap_or(OverlayPosition::BottomCenter),
+            scale: self
+                .scale
+                .as_deref()
+                .and_then(parse_scale)
+                .unwrap_or(OverlayScale::Medium),
             opacity: self.opacity.unwrap_or(0.9),
             display_duration: Duration::from_millis(
-                self.display_duration_ms.unwrap_or(DISPLAY_DURATION_MS_DEFAULT),
+                self.display_duration_ms
+                    .unwrap_or(DISPLAY_DURATION_MS_DEFAULT),
             ),
             history_length: self.history_length.unwrap_or(3),
-            theme: self.theme.as_deref().and_then(parse_theme).unwrap_or(Theme::Dark),
+            theme: self
+                .theme
+                .as_deref()
+                .and_then(parse_theme)
+                .unwrap_or(Theme::Dark),
             monitor: self.monitor.clone(),
-            keycap_style: self.keycap_style.as_deref().and_then(parse_keycap_style).unwrap_or(KeycapStyle::Laptop),
+            keycap_style: self
+                .keycap_style
+                .as_deref()
+                .and_then(parse_keycap_style)
+                .unwrap_or(KeycapStyle::Laptop),
             colors: ColorSettings {
-                keycap_primary: self.keycap_primary.clone().unwrap_or_else(|| "#1e1e24".into()),
-                keycap_secondary: self.keycap_secondary.clone().unwrap_or_else(|| "#38383f".into()),
+                keycap_primary: self
+                    .keycap_primary
+                    .clone()
+                    .unwrap_or_else(|| "#1e1e24".into()),
+                keycap_secondary: self
+                    .keycap_secondary
+                    .clone()
+                    .unwrap_or_else(|| "#38383f".into()),
                 use_gradient: self.use_gradient.unwrap_or(true),
                 highlight_modifiers: self.highlight_modifiers.unwrap_or(true),
-                modifier_primary: self.modifier_primary.clone().unwrap_or_else(|| "#3358a8".into()),
-                modifier_secondary: self.modifier_secondary.clone().unwrap_or_else(|| "#4d80e6".into()),
+                modifier_primary: self
+                    .modifier_primary
+                    .clone()
+                    .unwrap_or_else(|| "#3358a8".into()),
+                modifier_secondary: self
+                    .modifier_secondary
+                    .clone()
+                    .unwrap_or_else(|| "#4d80e6".into()),
             },
             text: TextSettings {
                 size: self.text_size,
                 color: self.text_color.clone().unwrap_or_else(|| "#f5f5f5".into()),
-                modifier_color: self.text_modifier_color.clone().unwrap_or_else(|| "#b3d4fc".into()),
-                caps: self.text_caps.as_deref().and_then(parse_text_caps).unwrap_or(TextCaps::Uppercase),
-                variant: self.text_variant.as_deref().and_then(parse_text_variant).unwrap_or(TextVariant::Full),
+                modifier_color: self
+                    .text_modifier_color
+                    .clone()
+                    .unwrap_or_else(|| "#b3d4fc".into()),
+                caps: self
+                    .text_caps
+                    .as_deref()
+                    .and_then(parse_text_caps)
+                    .unwrap_or(TextCaps::Uppercase),
+                variant: self
+                    .text_variant
+                    .as_deref()
+                    .and_then(parse_text_variant)
+                    .unwrap_or(TextVariant::Full),
             },
             border: BorderSettings {
                 enabled: self.border_enabled.unwrap_or(true),
-                color: self.border_color.clone().unwrap_or_else(|| "#5a5a60".into()),
+                color: self
+                    .border_color
+                    .clone()
+                    .unwrap_or_else(|| "#5a5a60".into()),
                 width: self.border_width.unwrap_or(1.0),
                 radius: self.border_radius.unwrap_or(0.25),
-                modifier_color: self.border_modifier_color.clone().unwrap_or_else(|| "#4d80e6".into()),
+                modifier_color: self
+                    .border_modifier_color
+                    .clone()
+                    .unwrap_or_else(|| "#4d80e6".into()),
             },
             background: BackgroundSettings {
                 enabled: self.background_enabled.unwrap_or(false),
-                color: self.background_color.clone().unwrap_or_else(|| "#00000080".into()),
+                color: self
+                    .background_color
+                    .clone()
+                    .unwrap_or_else(|| "#00000080".into()),
             },
-            animation_type: self.animation_type.as_deref().and_then(parse_animation_type).unwrap_or(AnimationType::Slide),
+            animation_type: self
+                .animation_type
+                .as_deref()
+                .and_then(parse_animation_type)
+                .unwrap_or(AnimationType::Slide),
             animation_speed: self.animation_speed.unwrap_or(0.5),
             margin_x: self.margin_x.unwrap_or(16.0),
             margin_y: self.margin_y.unwrap_or(16.0),
