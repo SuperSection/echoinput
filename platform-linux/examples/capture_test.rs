@@ -6,16 +6,20 @@
 //! This will capture keyboard events and print them to the terminal.
 //! Press Ctrl+C to exit.
 
-#![cfg(target_os = "linux")]
+#[cfg(not(target_os = "linux"))]
+fn main() {
+    eprintln!("This example only runs on Linux.");
+}
 
-use input_core::processor::DefaultEventProcessor;
-use input_core::traits::{EventProcessor, ProcessorConfig};
-use platform::capture::KeyboardCaptureProvider;
-use std::io::Write;
-use std::time::{Duration, Instant};
-
+#[cfg(target_os = "linux")]
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    use input_core::processor::DefaultEventProcessor;
+    use input_core::traits::{EventProcessor, ProcessorConfig};
+    use platform::capture::KeyboardCaptureProvider;
+    use std::io::Write;
+    use std::time::{Duration, Instant};
+
     // Initialize logging
     tracing_subscriber::fmt().with_env_filter("debug").init();
 
