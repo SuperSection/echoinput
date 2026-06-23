@@ -1,6 +1,6 @@
 use input_core::events::ShortcutCombo;
 use input_core::ipc::MessageBus;
-use input_core::overlay::{DisplayEvent, OverlayConfig, OverlayPosition, TextCaps, TextVariant};
+use input_core::overlay::{DisplayEvent, OverlayConfig, TextCaps, TextVariant};
 use platform::overlay::{OverlayRenderer, OverlayRendererFactory};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -184,7 +184,7 @@ fn run_windows_overlay(
             screen_h,
             None,
             None,
-            GetModuleHandleW(None).ok(),
+            GetModuleHandleW(None).unwrap(),
             None,
         )?;
 
@@ -344,10 +344,10 @@ unsafe fn render_frame(
     };
     let ppt_src = POINT { x: 0, y: 0 };
     let blend = BLENDFUNCTION {
-        BlendOp: AC_SRC_OVER,
+        BlendOp: AC_SRC_OVER as u8,
         BlendFlags: 0,
         SourceConstantAlpha: 255,
-        AlphaFormat: AC_SRC_ALPHA,
+        AlphaFormat: AC_SRC_ALPHA as u8,
     };
 
     let _ = UpdateLayeredWindow(
@@ -376,6 +376,8 @@ unsafe fn render_keycaps_gdi(
     screen_w: i32,
     screen_h: i32,
 ) {
+    use input_core::overlay::OverlayPosition;
+    use windows::Win32::Foundation::*;
     use windows::Win32::Graphics::Gdi::*;
 
     let font_size = config.text.size.unwrap_or(config.scale.font_size()) as i32;
