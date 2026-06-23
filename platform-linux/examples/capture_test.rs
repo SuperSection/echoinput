@@ -6,6 +6,8 @@
 //! This will capture keyboard events and print them to the terminal.
 //! Press Ctrl+C to exit.
 
+#![cfg(target_os = "linux")]
+
 use input_core::processor::DefaultEventProcessor;
 use input_core::traits::{EventProcessor, ProcessorConfig};
 use platform::capture::KeyboardCaptureProvider;

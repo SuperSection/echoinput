@@ -1,6 +1,8 @@
 use input_core::events::ShortcutCombo;
 use input_core::ipc::MessageBus;
-use input_core::overlay::{DisplayEvent, KeycapStyle, OverlayConfig, TextCaps, TextVariant};
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use input_core::overlay::KeycapStyle;
+use input_core::overlay::{DisplayEvent, OverlayConfig, TextCaps, TextVariant};
 use platform::overlay::{OverlayRenderer, OverlayRendererFactory};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -170,7 +172,7 @@ fn run_macos_overlay(
 
         let style_mask: NSUInteger = 0; // NSBorderlessWindowMask
         let backing: NSUInteger = 2; // NSBackingStoreBuffered
-        let defer: BOOL = 0; // NO
+        let defer: Bool = 0; // NO
 
         let content_rect = NSRect {
             origin: NSPoint { x: 0.0, y: 0.0 },
@@ -746,7 +748,7 @@ fn is_modifier_label(label: &str) -> bool {
 #[cfg(target_os = "macos")]
 type NSUInteger = u64;
 #[cfg(target_os = "macos")]
-type BOOL = u8;
+type Bool = u8;
 
 #[cfg(target_os = "macos")]
 #[derive(Clone, Copy)]
