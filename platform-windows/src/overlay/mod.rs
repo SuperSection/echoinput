@@ -1,6 +1,8 @@
 use input_core::events::ShortcutCombo;
 use input_core::ipc::MessageBus;
 use input_core::overlay::{DisplayEvent, OverlayConfig, TextCaps, TextVariant};
+#[cfg(target_os = "windows")]
+use overlay::animation::Animation;
 use platform::overlay::{OverlayRenderer, OverlayRendererFactory};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -195,6 +197,7 @@ fn run_windows_overlay(
 
         let mut config = initial_config;
         let mut current_combos: Vec<ShortcutCombo> = Vec::new();
+        let mut animation = Animation::new(&config);
         let mut running = true;
 
         let mut msg: MSG = std::mem::zeroed();
@@ -239,25 +242,33 @@ fn run_windows_overlay(
                                             keys.remove(0);
                                         }
                                         current_combos[0] = ShortcutCombo::sequence(keys);
-                                        render_frame(hwnd, &current_combos, &config);
+                                        animation.refresh();
+                                        let opacity = animation.current_opacity();
+                                        render_frame(hwnd, &current_combos, &config, opacity);
                                         continue;
                                     }
                                 }
                             }
                             current_combos.clear();
                             current_combos.push(combo);
-                            render_frame(hwnd, &current_combos, &config);
+                            animation.show(config.opacity);
+                            let opacity = animation.current_opacity();
+                            render_frame(hwnd, &current_combos, &config, opacity);
                         }
                         DisplayEvent::History(combos) => {
                             current_combos = combos;
-                            render_frame(hwnd, &current_combos, &config);
+                            animation.show(config.opacity);
+                            let opacity = animation.current_opacity();
+                            render_frame(hwnd, &current_combos, &config, opacity);
                         }
                         DisplayEvent::Clear => {
                             current_combos.clear();
+                            animation = Animation::new(&config);
                             hide_window(hwnd);
                         }
                         DisplayEvent::UpdateConfig(new_config) => {
                             config = *new_config;
+                            animation.update_config(&config);
                         }
                     },
                     RendererCommand::Stop => {
@@ -267,7 +278,21 @@ fn run_windows_overlay(
                 }
             }
 
-            if current_combos.is_empty() {
+            let needs_redraw = animation.tick();
+            let opacity = animation.current_opacity();
+
+            if needs_redraw && animation.state() == overlay::animation::AnimationState::Idle {
+                current_combos.clear();
+                hide_window(hwnd);
+            } else if !current_combos.is_empty() && animation.is_visible() {
+                let _ = SetLayeredWindowAttributes(
+                    hwnd,
+                    COLORREF(0),
+                    (opacity * 255.0) as u8,
+                    LWA_ALPHA,
+                );
+                render_frame(hwnd, &current_combos, &config, opacity);
+            } else if current_combos.is_empty() {
                 hide_window(hwnd);
             }
 
@@ -302,6 +327,7 @@ unsafe fn render_frame(
     hwnd: windows::Win32::Foundation::HWND,
     combos: &[ShortcutCombo],
     config: &OverlayConfig,
+    opacity: f32,
 ) {
     use windows::Win32::Foundation::*;
     use windows::Win32::Graphics::Gdi::*;
@@ -346,7 +372,7 @@ unsafe fn render_frame(
     let blend = BLENDFUNCTION {
         BlendOp: AC_SRC_OVER as u8,
         BlendFlags: 0,
-        SourceConstantAlpha: 255,
+        SourceConstantAlpha: (opacity * 255.0) as u8,
         AlphaFormat: AC_SRC_ALPHA as u8,
     };
 

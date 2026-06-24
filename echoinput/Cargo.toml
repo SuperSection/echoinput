@@ -27,3 +27,6 @@ platform-windows = { path = "../platform-windows" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 platform-macos = { path = "../platform-macos" }
+
+[build-dependencies]
+embed-resource = "2"

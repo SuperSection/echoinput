@@ -1,10 +1,10 @@
-use crate::overlay_wayland::animation::Animation;
 use crate::overlay_wayland::error::WaylandError;
 use input_core::events::ShortcutCombo;
 use input_core::ipc::MessageBus;
 use input_core::overlay::{
     DisplayEvent, KeycapStyle, OverlayConfig, OverlayPosition, TextCaps, TextVariant,
 };
+use overlay::animation::Animation;
 use std::os::unix::io::{AsFd, AsRawFd};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -627,9 +627,7 @@ fn run_wayland_event_loop(
 
             // When animation finishes fading to Idle, clear the combo list
             // so the next keypress starts fresh — no stale rows reappear.
-            if needs_redraw
-                && animation.state() == crate::overlay_wayland::animation::AnimationState::Idle
-            {
+            if needs_redraw && animation.state() == overlay::animation::AnimationState::Idle {
                 current_combos.clear();
             }
 

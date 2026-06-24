@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="windows-1252"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product
+    Id="*"
+    Name="EchoInput"
+    UpgradeCode="A1B2C3D4-E5F6-7890-ABCD-EF1234567890"
+    Language="1033"
+    Codepage="1252"
+    Version="$(var.Version)"
+    Manufacturer="EchoInput Team">
+
+    <Package
+      Id="*"
+      Keywords="Installer"
+      Description="EchoInput — Privacy-first keyboard visualization overlay"
+      Manufacturer="EchoInput Team"
+      InstallerVersion="450"
+      Languages="1033"
+      Compressed="yes"
+      InstallScope="perMachine"
+      SummaryCodepage="1252"
+      Platform="x64" />
+
+    <MajorUpgrade
+      AllowSameVersionUpgrades="yes"
+      DowngradeErrorMessage="A newer version of EchoInput is already installed." />
+
+    <Media Id="1" Cabinet="echoinput.cab" EmbedCab="yes" DiskPrompt="CD-ROM #1" />
+    <Property Id="DiskPrompt" Value="EchoInput Installation" />
+
+    <Icon Id="EchoInputIcon" SourceFile="$(var.CargoTargetBinDir)\echoinput.exe" />
+    <Property Id="ARPPRODUCTICON" Value="EchoInputIcon" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/SuperSection/echoinput" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/SuperSection/echoinput" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder" Name="PFiles">
+        <Directory Id="APPLICATIONFOLDER" Name="EchoInput">
+          <Component Id="MainExecutable" Guid="*">
+            <File
+              Id="echoinput.exe"
+              Name="echoinput.exe"
+              DiskId="1"
+              Source="$(var.CargoTargetBinDir)\echoinput.exe"
+              KeyPath="yes" />
+          </Component>
+          <Component Id="License" Guid="*">
+            <File
+              Id="License"
+              Name="LICENSE"
+              DiskId="1"
+              Source="../LICENSE"
+              KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+
+      <Directory Id="ProgramMenuFolder" Name="Programs">
+        <Directory Id="ApplicationProgramsFolder" Name="EchoInput">
+          <Component Id="Shortcut" Guid="*">
+            <Shortcut
+              Id="ApplicationStartMenuShortcut"
+              Name="EchoInput"
+              Description="Privacy-first keyboard visualization overlay"
+              Target="[APPLICATIONFOLDER]echoinput.exe"
+              WorkingDirectory="APPLICATIONFOLDER"
+              Icon="EchoInputIcon" />
+            <RegistryValue
+              Root="HKCU"
+              Key="Software\EchoInput\Shortcuts"
+              Name="StartMenu"
+              Type="integer"
+              Value="1"
+              KeyPath="yes" />
+          </Component>
+          <Component Id="UninstallShortcut" Guid="*">
+            <Shortcut
+              Id="UninstallProgramMenuShortcut"
+              Name="Uninstall EchoInput"
+              Description="Remove EchoInput from your computer"
+              Target="[System64Folder]msiexec.exe"
+              Arguments="/x [ProductCode]" />
+            <RegistryValue
+              Root="HKCU"
+              Key="Software\EchoInput\Shortcuts"
+              Name="UninstallMenu"
+              Type="integer"
+              Value="1"
+              KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+
+      <Directory Id="StartupFolder" Name="Startup">
+        <Component Id="AutoStart" Guid="*" KeyPath="yes">
+          <RegistryValue
+            Root="HKCU"
+            Key="Software\Microsoft\Windows\CurrentVersion\Run"
+            Name="EchoInput"
+            Type="string"
+            Value="[APPLICATIONFOLDER]echoinput.exe"
+            KeyPath="yes" />
+        </Component>
+      </Directory>
+    </Directory>
+
+    <Feature
+      Id="MainProgram"
+      Title="EchoInput"
+      Description="Installs EchoInput keyboard overlay."
+      Level="1"
+      ConfigurableDirectory="APPLICATIONFOLDER"
+      AllowAdvertise="no"
+      Display="hidden"
+      Absent="disallow">
+
+      <ComponentRef Id="MainExecutable" />
+      <ComponentRef Id="License" />
+      <ComponentRef Id="Shortcut" />
+      <ComponentRef Id="UninstallShortcut" />
+    </Feature>
+
+    <Feature
+      Id="AutoStartFeature"
+      Title="Start with Windows"
+      Description="Automatically start EchoInput when you log in."
+      Level="1"
+      Absent="allow">
+
+      <ComponentRef Id="AutoStart" />
+    </Feature>
+
+    <UI>
+      <UIRef Id="WixUI_InstallDir" />
+      <Property Id="WIXUI_INSTALLDIR" Value="APPLICATIONFOLDER" />
+
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="LicenseDlg" Order="99">1</Publish>
+      <Publish Dialog="LicenseDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="99">1</Publish>
+      <Publish Dialog="LicenseDlg" Control="Next" Event="NewDialog" Value="CustomizeDlg" Order="99">1</Publish>
+      <Publish Dialog="CustomizeDlg" Control="Back" Event="NewDialog" Value="LicenseDlg" Order="99">1</Publish>
+    </UI>
+
+    <WixVariable Id="WixUILicenseRtf" Value="../LICENSE" />
+  </Product>
+</Wix>

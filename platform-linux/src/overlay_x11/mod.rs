@@ -3,6 +3,7 @@ use input_core::ipc::MessageBus;
 use input_core::overlay::{
     DisplayEvent, KeycapStyle, OverlayConfig, OverlayPosition, TextCaps, TextVariant,
 };
+use overlay::animation::Animation;
 use platform::overlay::{OverlayRenderer, OverlayRendererFactory};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -209,6 +210,7 @@ fn run_x11_event_loop(
 
     let mut config = initial_config;
     let mut current_combos: Vec<ShortcutCombo> = Vec::new();
+    let mut animation = Animation::new(&config);
     let mut running = true;
     let mut screen_width = screen.width_in_pixels as i32;
     let mut screen_height = screen.height_in_pixels as i32;
@@ -264,6 +266,8 @@ fn run_x11_event_loop(
                                         ShortcutCombo::sequence(keys)
                                     };
                                     current_combos[0] = merged;
+                                    animation.refresh();
+                                    let opacity = animation.current_opacity();
                                     let _ = render_x11(
                                         &conn,
                                         window,
@@ -271,6 +275,7 @@ fn run_x11_event_loop(
                                         &config,
                                         screen_width,
                                         screen_height,
+                                        opacity,
                                     );
                                     continue;
                                 }
@@ -278,6 +283,8 @@ fn run_x11_event_loop(
                         }
                         current_combos.clear();
                         current_combos.push(combo);
+                        animation.show(config.opacity);
+                        let opacity = animation.current_opacity();
                         let _ = render_x11(
                             &conn,
                             window,
@@ -285,10 +292,13 @@ fn run_x11_event_loop(
                             &config,
                             screen_width,
                             screen_height,
+                            opacity,
                         );
                     }
                     DisplayEvent::History(combos) => {
                         current_combos = combos;
+                        animation.show(config.opacity);
+                        let opacity = animation.current_opacity();
                         let _ = render_x11(
                             &conn,
                             window,
@@ -296,14 +306,17 @@ fn run_x11_event_loop(
                             &config,
                             screen_width,
                             screen_height,
+                            opacity,
                         );
                     }
                     DisplayEvent::Clear => {
                         current_combos.clear();
+                        animation = Animation::new(&config);
                         let _ = clear_x11(&conn, window);
                     }
                     DisplayEvent::UpdateConfig(new_config) => {
                         config = *new_config;
+                        animation.update_config(&config);
                     }
                 },
                 RendererCommand::Stop => {
@@ -313,12 +326,28 @@ fn run_x11_event_loop(
             }
         }
 
-        if !running {
-            break;
+        let needs_redraw = animation.tick();
+        let opacity = animation.current_opacity();
+
+        if needs_redraw && animation.state() == overlay::animation::AnimationState::Idle {
+            current_combos.clear();
+            let _ = clear_x11(&conn, window);
+        } else if !current_combos.is_empty() && animation.is_visible() {
+            let _ = render_x11(
+                &conn,
+                window,
+                &current_combos,
+                &config,
+                screen_width,
+                screen_height,
+                opacity,
+            );
+        } else if current_combos.is_empty() {
+            let _ = clear_x11(&conn, window);
         }
 
-        if current_combos.is_empty() {
-            let _ = clear_x11(&conn, window);
+        if !running {
+            break;
         }
 
         conn.flush()?;
@@ -340,6 +369,7 @@ fn render_x11(
     config: &OverlayConfig,
     screen_width: i32,
     screen_height: i32,
+    opacity: f32,
 ) -> anyhow::Result<()> {
     use x11rb::connection::Connection;
     use x11rb::protocol::xproto::*;
@@ -636,10 +666,11 @@ fn render_x11(
         let g = chunk[1];
         let r = chunk[2];
         let a = chunk[3];
+        let scaled_a = ((a as f32 / 255.0) * opacity * 255.0).round() as u8;
         x11_data.push(b);
         x11_data.push(g);
         x11_data.push(r);
-        x11_data.push(a);
+        x11_data.push(scaled_a);
     }
 
     conn.put_image(

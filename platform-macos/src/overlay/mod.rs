@@ -3,6 +3,8 @@ use input_core::ipc::MessageBus;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use input_core::overlay::KeycapStyle;
 use input_core::overlay::{DisplayEvent, OverlayConfig, TextCaps, TextVariant};
+#[cfg(target_os = "macos")]
+use overlay::animation::Animation;
 use platform::overlay::{OverlayRenderer, OverlayRendererFactory};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -216,6 +218,7 @@ fn run_macos_overlay(
 
         let mut config = initial_config;
         let mut current_combos: Vec<ShortcutCombo> = Vec::new();
+        let mut animation = Animation::new(&config);
         let mut running = true;
 
         info!("macOS overlay running — press keys to see visualization");
@@ -242,12 +245,15 @@ fn run_macos_overlay(
                                             keys.remove(0);
                                         }
                                         current_combos[0] = ShortcutCombo::sequence(keys);
+                                        animation.refresh();
+                                        let opacity = animation.current_opacity();
                                         render_macos_view(
                                             view,
                                             &current_combos,
                                             &config,
                                             screen_w,
                                             screen_h,
+                                            opacity,
                                         );
                                         continue;
                                     }
@@ -255,18 +261,38 @@ fn run_macos_overlay(
                             }
                             current_combos.clear();
                             current_combos.push(combo);
-                            render_macos_view(view, &current_combos, &config, screen_w, screen_h);
+                            animation.show(config.opacity);
+                            let opacity = animation.current_opacity();
+                            render_macos_view(
+                                view,
+                                &current_combos,
+                                &config,
+                                screen_w,
+                                screen_h,
+                                opacity,
+                            );
                         }
                         DisplayEvent::History(combos) => {
                             current_combos = combos;
-                            render_macos_view(view, &current_combos, &config, screen_w, screen_h);
+                            animation.show(config.opacity);
+                            let opacity = animation.current_opacity();
+                            render_macos_view(
+                                view,
+                                &current_combos,
+                                &config,
+                                screen_w,
+                                screen_h,
+                                opacity,
+                            );
                         }
                         DisplayEvent::Clear => {
                             current_combos.clear();
+                            animation = Animation::new(&config);
                             let _: () = msg_send![view, setNeedsDisplay: 1u8];
                         }
                         DisplayEvent::UpdateConfig(new_config) => {
                             config = *new_config;
+                            animation.update_config(&config);
                         }
                     },
                     RendererCommand::Stop => {
@@ -276,8 +302,15 @@ fn run_macos_overlay(
                 }
             }
 
-            if current_combos.is_empty() {
-                // Nothing to display
+            // Tick animation
+            let needs_redraw = animation.tick();
+            let opacity = animation.current_opacity();
+
+            if needs_redraw && animation.state() == overlay::animation::AnimationState::Idle {
+                current_combos.clear();
+                let _: () = msg_send![view, setNeedsDisplay: 1u8];
+            } else if !current_combos.is_empty() && animation.is_visible() {
+                render_macos_view(view, &current_combos, &config, screen_w, screen_h, opacity);
             }
 
             // Process NSEvents (drain the event queue)
@@ -303,6 +336,7 @@ unsafe fn render_macos_view(
     config: &OverlayConfig,
     screen_w: f64,
     screen_h: f64,
+    opacity: f32,
 ) {
     use objc::msg_send;
     use objc::runtime::{Class, Object};
@@ -368,6 +402,7 @@ unsafe fn render_macos_view(
             let layer: *mut Object = msg_send![view, layer];
             if !layer.is_null() {
                 let _: () = msg_send![layer, setContents: image];
+                let _: () = msg_send![layer, setOpacity: opacity as f64];
             }
 
             let _: () = msg_send![bitmap, release];
@@ -384,6 +419,7 @@ unsafe fn render_macos_view(
     _config: &OverlayConfig,
     _screen_w: f64,
     _screen_h: f64,
+    _opacity: f32,
 ) {
 }
 

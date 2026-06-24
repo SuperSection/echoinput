@@ -1,3 +1,5 @@
+pub mod animation;
+
 use input_core::events::ShortcutCombo;
 use input_core::ipc::{MessageBus, OverlayCommand, SettingsUpdate, ShortcutEvent};
 use input_core::overlay::{DisplayEvent, OverlayConfig};
