@@ -30,9 +30,14 @@ jobs:
             libxrandr-dev \
             libxi-dev \
             libglib2.0-dev \
-            appimagetool \
             dpkg-dev \
-            rpm
+            rpm \
+            imagemagick
+
+      - name: Install appimagetool
+        run: |
+          wget -q https://github.com/AppImage/type2-runtime/releases/download/continuous/appimagetool-x86_64.AppImage -O /tmp/appimagetool
+          chmod +x /tmp/appimagetool
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -60,22 +65,22 @@ jobs:
 
           # Create .desktop file
           cat > AppDir/echoinput.desktop << 'EOF'
-          [Desktop Entry]
-          Type=Application
-          Name=EchoInput
-          Comment=Keyboard visualization overlay
-          Exec=echoinput
-          Icon=echoinput
-          Categories=Utility;
-          EOF
+[Desktop Entry]
+Type=Application
+Name=EchoInput
+Comment=Keyboard visualization overlay
+Exec=echoinput
+Icon=echoinput
+Categories=Utility;
+EOF
 
           # Create AppRun
           cat > AppDir/AppRun << 'EOF'
-          #!/bin/sh
-          HERE="$(dirname "$(readlink -f "$0")")"
-          export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
-          exec "$HERE/usr/bin/echoinput" "$@"
-          EOF
+#!/bin/sh
+HERE="$(dirname "$(readlink -f "$0")")"
+export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
+exec "$HERE/usr/bin/echoinput" "$@"
+EOF
           chmod +x AppDir/AppRun
 
           # Create icon (placeholder - use a simple PNG)
@@ -85,9 +90,11 @@ jobs:
             echo "Icon created"
 
       - name: Build AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
         run: |
           export VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
-          appimagetool AppDir echoinput-${VERSION}-x86_64.AppImage
+          /tmp/appimagetool AppDir echoinput-${VERSION}-x86_64.AppImage
 
       - name: Build .deb package
         run: |
@@ -102,18 +109,18 @@ jobs:
           cp AppDir/usr/share/icons/hicolor/256x256/apps/echoinput.png deb-package/usr/share/icons/hicolor/256x256/apps/
 
           cat > deb-package/DEBIAN/control << EOF
-          Package: echoinput
-          Version: $VERSION
-          Section: utils
-          Priority: optional
-          Architecture: amd64
-          Depends: libc6 (>= 2.31), libwayland-client0, libxkbcommon0, libcairo2, libglib2.0-0
-          Maintainer: EchoInput Team <team@echoinput.dev>
-          Description: Privacy-first keyboard visualization overlay
-           EchoInput shows your keyboard shortcuts on screen as you type.
-           Works on Wayland, X11, Windows, and macOS.
-           No telemetry, no cloud, no tracking.
-          EOF
+Package: echoinput
+Version: $VERSION
+Section: utils
+Priority: optional
+Architecture: amd64
+Depends: libc6 (>= 2.31), libwayland-client0, libxkbcommon0, libcairo2, libglib2.0-0
+Maintainer: EchoInput Team <soumosarkar.official@gmail.com>
+Description: Privacy-first keyboard visualization overlay
+ EchoInput shows your keyboard shortcuts on screen as you type.
+ Works on Wayland, X11, Windows, and macOS.
+ No telemetry, no cloud, no tracking.
+EOF
 
           dpkg-deb --build deb-package echoinput-${VERSION}-amd64.deb
 
@@ -129,30 +136,30 @@ jobs:
           cp AppDir/usr/share/icons/hicolor/256x256/apps/echoinput.png rpm-package/usr/share/icons/hicolor/256x256/apps/
 
           cat > rpm-package.spec << EOF
-          Name: echoinput
-          Version: $VERSION
-          Release: 1%{?dist}
-          Summary: Privacy-first keyboard visualization overlay
-          License: MIT OR Apache-2.0
-          URL: https://github.com/SuperSection/echoinput
-          Source0: echoinput-%{version}.tar.gz
-          BuildArch: x86_64
-          Requires: libc6 >= 2.31, libwayland-client0, libxkbcommon0, libcairo2, glib2
+Name: echoinput
+Version: $VERSION
+Release: 1%{?dist}
+Summary: Privacy-first keyboard visualization overlay
+License: MIT OR Apache-2.0
+URL: https://github.com/SuperSection/echoinput
+Source0: echoinput-%{version}.tar.gz
+BuildArch: x86_64
+Requires: libc6 >= 2.31, libwayland-client0, libxkbcommon0, libcairo2, glib2
 
-          %description
-          EchoInput shows your keyboard shortcuts on screen as you type.
-          Works on Wayland, X11, Windows, and macOS.
-          No telemetry, no cloud, no tracking.
+%description
+EchoInput shows your keyboard shortcuts on screen as you type.
+Works on Wayland, X11, Windows, and macOS.
+No telemetry, no cloud, no tracking.
 
-          %files
-          /usr/bin/echoinput
-          /usr/share/applications/echoinput.desktop
-          /usr/share/icons/hicolor/256x256/apps/echoinput.png
+%files
+/usr/bin/echoinput
+/usr/share/applications/echoinput.desktop
+/usr/share/icons/hicolor/256x256/apps/echoinput.png
 
-          %changelog
-          * $(date "+%a %b %d %Y") EchoInput Team <team@echoinput.dev> - $VERSION-1
-          - Initial release
-          EOF
+%changelog
+* $(date "+%a %b %d %Y") EchoInput Team <soumosarkar.official@gmail.com> - $VERSION-1
+- Initial release
+EOF
 
           rpmbuild --define "_topdir $(pwd)/rpmbuild" -bb rpm-package.spec
           cp rpmbuild/RPMS/x86_64/echoinput-*.rpm .
@@ -203,7 +210,7 @@ jobs:
         run: cargo install cargo-wix
 
       - name: Build .msi installer
-        run: cargo wix --no-build
+        run: cargo wix --no-build -p echoinput
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -214,20 +221,18 @@ jobs:
             target/wix/echoinput-*.msi
             target/release/echoinput.exe
 
-  build-macos:
-    name: Build macOS (x86_64 + ARM64)
-    runs-on: macos-latest
+  build-macos-x86_64:
+    name: Build macOS (x86_64)
+    runs-on: macos-13
     steps:
       - uses: actions/checkout@v7
 
       - name: Install system dependencies
         run: |
-          brew install cairo pkg-config create-dmg
+          brew install cairo pkg-config
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-apple-darwin, aarch64-apple-darwin
 
       - name: Cache cargo
         uses: actions/cache@v5
@@ -238,60 +243,125 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-x86_64-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-x86_64-cargo-
 
       - name: Build release (x86_64)
-        run: cargo build --release --bin echoinput --target x86_64-apple-darwin
+        run: cargo build --release --bin echoinput
+
+      - name: Upload x86_64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-x86_64-binary
+          path: target/release/echoinput
+
+  build-macos-arm64:
+    name: Build macOS (ARM64)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install system dependencies
+        run: |
+          brew install cairo pkg-config
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-arm64-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-arm64-cargo-
 
       - name: Build release (ARM64)
-        run: cargo build --release --bin echoinput --target aarch64-apple-darwin
+        run: cargo build --release --bin echoinput
 
-      - name: Create universal binary
+      - name: Upload ARM64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64-binary
+          path: target/release/echoinput
+
+  build-macos:
+    name: Package macOS (universal)
+    needs: [build-macos-x86_64, build-macos-arm64]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install system dependencies
         run: |
-          lipo -create \
-            target/x86_64-apple-darwin/release/echoinput \
-            target/aarch64-apple-darwin/release/echoinput \
-            -output target/release/echoinput
+          brew install create-dmg
 
-      - name: Create DMG
+      - name: Download x86_64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-x86_64-binary
+          path: binaries/x86_64
+
+      - name: Download ARM64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-arm64-binary
+          path: binaries/arm64
+
+      - name: Create universal binary and DMG
         run: |
           export VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+
+          chmod +x binaries/x86_64/echoinput binaries/arm64/echoinput
+          file binaries/x86_64/echoinput
+          file binaries/arm64/echoinput
+
+          lipo -create \
+            binaries/x86_64/echoinput \
+            binaries/arm64/echoinput \
+            -output echoinput-universal
+
+          lipo -info echoinput-universal
+
           mkdir -p dmg/EchoInput.app/Contents/MacOS
           mkdir -p dmg/EchoInput.app/Contents/Resources
 
-          cp target/release/echoinput dmg/EchoInput.app/Contents/MacOS/
+          cp echoinput-universal dmg/EchoInput.app/Contents/MacOS/echoinput
+          chmod +x dmg/EchoInput.app/Contents/MacOS/echoinput
 
-          cat > dmg/EchoInput.app/Contents/Info.plist << EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>CFBundleExecutable</key>
-              <string>echoinput</string>
-              <key>CFBundleIdentifier</key>
-              <string>dev.echoinput.EchoInput</string>
-              <key>CFBundleName</key>
-              <string>EchoInput</string>
-              <key>CFBundleVersion</key>
-              <string>$VERSION</string>
-              <key>CFBundleShortVersionString</key>
-              <string>$VERSION</string>
-              <key>LSMinimumSystemVersion</key>
-              <string>10.15</string>
-              <key>NSHighResolutionCapable</key>
-              <true/>
-          </dict>
-          </plist>
-          EOF
+          cat > dmg/EchoInput.app/Contents/Info.plist << PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>echoinput</string>
+    <key>CFBundleIdentifier</key>
+    <string>dev.echoinput.EchoInput</string>
+    <key>CFBundleName</key>
+    <string>EchoInput</string>
+    <key>CFBundleVersion</key>
+    <string>$VERSION</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$VERSION</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>10.15</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+</dict>
+</plist>
+PLIST
 
-          # Create a simple icon
           sips -s format icns /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns --out dmg/EchoInput.app/Contents/Resources/AppIcon.icns 2>/dev/null || true
 
           create-dmg \
             --volname "EchoInput $VERSION" \
-            --volicon "dmg/EchoInput.app/Contents/Resources/AppIcon.icns" \
             --window-pos 200 120 \
             --window-size 600 400 \
             --icon-size 100 \
@@ -307,7 +377,7 @@ jobs:
           name: macos-artifacts
           path: |
             echoinput-*.dmg
-            target/release/echoinput
+            echoinput-universal
 
   create-release:
     name: Create GitHub Release

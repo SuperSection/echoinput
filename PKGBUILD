@@ -1,4 +1,4 @@
-# Maintainer: EchoInput Team <team@echoinput.dev>
+# Maintainer: EchoInput Team <soumosarkar.official@gmail.com>
 pkgname=echoinput
 pkgver=0.1.0
 pkgrel=1
