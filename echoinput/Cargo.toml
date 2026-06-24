@@ -29,4 +29,4 @@ platform-windows = { path = "../platform-windows" }
 platform-macos = { path = "../platform-macos" }
 
 [build-dependencies]
-embed-resource = "2"
+winresource = "0.1"
