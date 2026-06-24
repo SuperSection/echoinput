@@ -1,6 +1,7 @@
 //! Core traits.
 
 use crate::events::{InputEvent, ModifierState, ProcessedEvent, ShortcutCombo};
+use crate::overlay::TextCaps;
 
 /// Platform-independent event processor.
 ///
@@ -40,6 +41,8 @@ pub struct ProcessorConfig {
     pub group_shortcuts: bool,
     /// Minimum time between duplicate events (deduplication).
     pub dedup_window: std::time::Duration,
+    /// Text capitalization mode — controls how Shift+key is displayed.
+    pub text_caps: TextCaps,
 }
 
 impl Default for ProcessorConfig {
@@ -48,6 +51,7 @@ impl Default for ProcessorConfig {
             history_length: 10,
             group_shortcuts: true,
             dedup_window: std::time::Duration::from_millis(50),
+            text_caps: TextCaps::Natural,
         }
     }
 }

@@ -10,7 +10,7 @@ pub enum KeyState {
 }
 
 /// Modifier key state bitmask.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ModifierState {
     pub ctrl: bool,
     pub alt: bool,
@@ -20,6 +20,19 @@ pub struct ModifierState {
     pub capslock: bool,
     /// NumLock toggle state (on/off)
     pub numlock: bool,
+}
+
+impl Default for ModifierState {
+    fn default() -> Self {
+        Self {
+            ctrl: false,
+            alt: false,
+            shift: false,
+            super_key: false,
+            capslock: false,
+            numlock: true, // Most systems start with NumLock ON
+        }
+    }
 }
 
 impl ModifierState {

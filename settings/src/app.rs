@@ -54,7 +54,7 @@ pub const SCALES: &[&str] = &["Small", "Medium", "Large", "ExtraLarge"];
 pub const THEMES: &[&str] = &["Dark", "Light", "System"];
 pub const KEYCAP_STYLES: &[&str] = &["Minimal", "Laptop", "LowProfile", "PBT"];
 pub const ANIMATION_TYPES: &[&str] = &["None", "Fade", "Zoom", "Float", "Slide"];
-pub const TEXT_CAPS: &[&str] = &["Uppercase", "Capitalize", "Lowercase"];
+pub const TEXT_CAPS: &[&str] = &["Natural", "Uppercase", "Capitalize", "Lowercase"];
 pub const TEXT_VARIANTS: &[&str] = &["Full", "Short", "Icon"];
 
 pub struct SettingsApp {

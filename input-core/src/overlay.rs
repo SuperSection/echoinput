@@ -160,7 +160,7 @@ impl Default for TextSettings {
             size: None,
             color: "#f5f5f5".into(),
             modifier_color: "#b3d4fc".into(),
-            caps: TextCaps::Capitalize,
+            caps: TextCaps::Natural,
             variant: TextVariant::Short,
         }
     }
@@ -169,6 +169,7 @@ impl Default for TextSettings {
 /// Text capitalization mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TextCaps {
+    Natural,
     Uppercase,
     Capitalize,
     Lowercase,

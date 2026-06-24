@@ -194,6 +194,7 @@ fn run_overlay(config: OverlayConfig) {
             group_shortcuts: true,
             history_length: config.history_length,
             dedup_window: Duration::from_millis(50),
+            text_caps: config.text.caps,
         });
 
         let ctrl_c = tokio::signal::ctrl_c();

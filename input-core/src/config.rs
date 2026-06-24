@@ -198,7 +198,7 @@ impl FileConfig {
                     .text_caps
                     .as_deref()
                     .and_then(parse_text_caps)
-                    .unwrap_or(TextCaps::Uppercase),
+                    .unwrap_or(TextCaps::Natural),
                 variant: self
                     .text_variant
                     .as_deref()
@@ -291,7 +291,7 @@ impl FileConfig {
             text_size: None,
             text_color: Some("#f5f5f5".into()),
             text_modifier_color: Some("#b3d4fc".into()),
-            text_caps: Some("Uppercase".into()),
+            text_caps: Some("Natural".into()),
             text_variant: Some("Full".into()),
             border_enabled: Some(true),
             border_color: Some("#5a5a60".into()),
@@ -360,6 +360,7 @@ fn parse_keycap_style(s: &str) -> Option<KeycapStyle> {
 
 fn parse_text_caps(s: &str) -> Option<TextCaps> {
     match s {
+        "Natural" => Some(TextCaps::Natural),
         "Uppercase" => Some(TextCaps::Uppercase),
         "Capitalize" => Some(TextCaps::Capitalize),
         "Lowercase" => Some(TextCaps::Lowercase),
@@ -416,7 +417,7 @@ mod tests {
         assert_eq!(overlay_config.theme, Theme::Dark);
         assert_eq!(overlay_config.keycap_style, KeycapStyle::Laptop);
         assert_eq!(overlay_config.colors.keycap_primary, "#1e1e24");
-        assert_eq!(overlay_config.text.caps, TextCaps::Uppercase);
+        assert_eq!(overlay_config.text.caps, TextCaps::Natural);
         assert_eq!(overlay_config.border.radius, 0.25);
         assert_eq!(overlay_config.animation_type, AnimationType::Slide);
     }

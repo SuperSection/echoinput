@@ -1322,6 +1322,7 @@ fn render_keycaps(
 
                 // Apply text capitalization
                 let display_label = match config.text.caps {
+                    TextCaps::Natural => label.to_string(),
                     TextCaps::Uppercase => label.to_uppercase(),
                     TextCaps::Lowercase => label.to_lowercase(),
                     TextCaps::Capitalize => {

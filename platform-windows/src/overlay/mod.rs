@@ -560,6 +560,9 @@ unsafe fn hide_window(_hwnd: isize) {}
 
 #[allow(dead_code)]
 fn combo_to_key_parts(combo: &ShortcutCombo, variant: &TextVariant) -> Vec<String> {
+    if let Some(ref text) = combo.resolved_text {
+        return vec![text.clone()];
+    }
     if combo.is_sequence() {
         return combo
             .key_sequence
@@ -616,6 +619,7 @@ fn apply_modifier_label(label: &str, variant: &TextVariant) -> String {
 #[allow(dead_code)]
 fn apply_text_caps(label: &str, caps: &TextCaps) -> String {
     match caps {
+        TextCaps::Natural => label.to_string(),
         TextCaps::Uppercase => label.to_uppercase(),
         TextCaps::Lowercase => label.to_lowercase(),
         TextCaps::Capitalize => {

@@ -800,6 +800,7 @@ fn apply_modifier_label(label: &str, variant: &TextVariant) -> String {
 
 fn apply_text_caps(label: &str, caps: &TextCaps) -> String {
     match caps {
+        TextCaps::Natural => label.to_string(),
         TextCaps::Uppercase => label.to_uppercase(),
         TextCaps::Lowercase => label.to_lowercase(),
         TextCaps::Capitalize => {

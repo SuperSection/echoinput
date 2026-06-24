@@ -1,6 +1,7 @@
 use crate::events::*;
 use crate::key_resolver::KeyResolver;
 use crate::keys::VirtualKey;
+use crate::overlay::TextCaps;
 use crate::traits::{EventProcessor, ProcessorConfig};
 use std::collections::VecDeque;
 use std::time::Instant;
@@ -179,8 +180,28 @@ impl EventProcessor for DefaultEventProcessor {
                     }
 
                     if self.config.group_shortcuts && !self.modifiers.is_empty() {
-                        if self.is_character_event(&key) {
-                            // Character event with modifiers: only show the resolved symbol
+                        let is_shift_only = self.modifiers.shift
+                            && !self.modifiers.ctrl
+                            && !self.modifiers.alt
+                            && !self.modifiers.super_key;
+
+                        if is_shift_only {
+                            if self.config.text_caps == TextCaps::Natural
+                                || key.shifted_label().is_some()
+                            {
+                                // Natural mode: Shift resolves to the typed character directly.
+                                // Shifted symbols (?, ", ), *, etc.) always show just the symbol.
+                                let text = ShortcutCombo::get_key_display(&self.modifiers, &key);
+                                let combo = ShortcutCombo::character(key, text);
+                                out.push(ProcessedEvent::Shortcut(combo));
+                            } else {
+                                // Non-Natural mode, letter key: show "Shift + A" as a modifier combo.
+                                let combo = self.make_combo(Some(key));
+                                self.add_to_history(combo.clone());
+                                out.push(ProcessedEvent::Shortcut(combo));
+                            }
+                        } else if self.is_character_event(&key) {
+                            // Character event with other modifiers: only show the resolved symbol
                             let text = self.resolve_key(&key);
                             let combo = ShortcutCombo::character(key, text);
                             out.push(ProcessedEvent::Shortcut(combo));
@@ -456,6 +477,7 @@ mod tests {
             group_shortcuts: true,
             history_length: 3,
             dedup_window: Duration::from_millis(0),
+            ..Default::default()
         });
 
         proc.process(key_press(VirtualKey::ControlLeft));
