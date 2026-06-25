@@ -22,7 +22,7 @@
       Platform="x64" />
 
     <MajorUpgrade
-      AllowSameVersionUpgrades="yes"
+      AllowSameVersionUpgrades="no"
       DowngradeErrorMessage="A newer version of EchoInput is already installed." />
 
     <Media Id="1" Cabinet="echoinput.cab" EmbedCab="yes" DiskPrompt="CD-ROM #1" />
@@ -64,6 +64,7 @@
               Type="integer"
               Value="1"
               KeyPath="yes" />
+            <RemoveFile Id="RemoveShortcutsDir" Directory="ApplicationProgramsFolder" Name="*.*" On="uninstall" />
           </Component>
           <Component Id="UninstallShortcut" Guid="*">
             <Shortcut
