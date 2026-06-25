@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+
 use input_core::config::FileConfig;
 use input_core::events::{ModifierState, ProcessedEvent, ShortcutCombo};
 use input_core::ipc::MessageBus;
@@ -96,7 +98,35 @@ fn parse_log_level() -> String {
     std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into())
 }
 
+#[cfg(target_os = "windows")]
+fn windows_attach_console() {
+    unsafe {
+        extern "system" {
+            fn AttachConsole(dw_process_id: u32) -> i32;
+        }
+        const ATTACH_PARENT_PROCESS: u32 = 0xFFFF_FFFD; // (DWORD)-1
+        AttachConsole(ATTACH_PARENT_PROCESS);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_detach_console() {
+    unsafe {
+        extern "system" {
+            fn FreeConsole() -> i32;
+        }
+        FreeConsole();
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn windows_attach_console() {}
+
+#[cfg(not(target_os = "windows"))]
+fn windows_detach_console() {}
+
 fn print_help() {
+    windows_attach_console();
     println!("EchoInput — keyboard visualization overlay");
     println!();
     println!("USAGE:");
@@ -126,6 +156,7 @@ fn print_help() {
     }
     println!();
     println!("Config saved to: ~/.config/echoinput/config.toml");
+    windows_detach_console();
 }
 
 fn main() {
@@ -157,8 +188,11 @@ fn main() {
 
 fn run_overlay(config: OverlayConfig) {
     info!("Starting EchoInput overlay");
-    eprintln!("EchoInput overlay running. Press keys to see visualization.");
-    eprintln!("Press Ctrl+C to quit.");
+    #[cfg(not(target_os = "windows"))]
+    {
+        eprintln!("EchoInput overlay running. Press keys to see visualization.");
+        eprintln!("Press Ctrl+C to quit.");
+    }
 
     let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
     let bus = MessageBus::new(4096);
@@ -170,12 +204,14 @@ fn run_overlay(config: OverlayConfig) {
 
         if let Err(e) = renderer.start(config.clone()).await {
             error!("Failed to start overlay: {}", e);
+            #[cfg(not(target_os = "windows"))]
             eprintln!("Error: Failed to start overlay: {}", e);
             return;
         }
 
         if let Err(e) = capture.start().await {
             error!("Failed to start keyboard capture: {}", e);
+            #[cfg(not(target_os = "windows"))]
             eprintln!("Error: Failed to start keyboard capture: {}", e);
             #[cfg(target_os = "linux")]
             {
@@ -232,12 +268,14 @@ fn run_overlay(config: OverlayConfig) {
                         }
                         Err(RecvError::Closed) => {
                             error!("Input channel closed — capture thread may have exited");
+                            #[cfg(not(target_os = "windows"))]
                             eprintln!("Error: Input capture channel closed.");
                             break;
                         }
                     }
                 }
                 _ = &mut ctrl_c => {
+                    #[cfg(not(target_os = "windows"))]
                     eprintln!("\nShutting down...");
                     shutdown.store(true, Ordering::Relaxed);
                     break;
@@ -245,6 +283,7 @@ fn run_overlay(config: OverlayConfig) {
             }
 
             if shutdown.load(Ordering::Relaxed) {
+                #[cfg(not(target_os = "windows"))]
                 eprintln!("\nShutting down...");
                 break;
             }
