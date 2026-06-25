@@ -49,7 +49,7 @@
               Id="License"
               Name="LICENSE"
               DiskId="1"
-              Source="../LICENSE"
+              Source="../../LICENSE"
               KeyPath="yes" />
           </Component>
         </Directory>
@@ -140,6 +140,6 @@
       <Publish Dialog="CustomizeDlg" Control="Back" Event="NewDialog" Value="LicenseDlg" Order="99">1</Publish>
     </UI>
 
-    <WixVariable Id="WixUILicenseRtf" Value="../LICENSE" />
+    <WixVariable Id="WixUILicenseRtf" Value="../../LICENSE" />
   </Product>
 </Wix>
