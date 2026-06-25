@@ -17,7 +17,7 @@
       InstallerVersion="450"
       Languages="1033"
       Compressed="yes"
-      InstallScope="perUser"
+      InstallScope="perMachine"
       SummaryCodepage="1252"
       Platform="x64" />
 
@@ -36,7 +36,7 @@
     <Property Id="WIXUI_INSTALLDIR" Value="APPLICATIONFOLDER" />
 
     <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="LocalAppDataFolder" Name="LocalAppData">
+      <Directory Id="ProgramFiles64Folder" Name="PFiles">
         <Directory Id="APPLICATIONFOLDER" Name="EchoInput">
           <Component Id="MainExecutable" Guid="*">
             <File
@@ -48,7 +48,7 @@
           </Component>
           <Component Id="AutoStart" Guid="*">
             <RegistryValue
-              Root="HKCU"
+              Root="HKLM"
               Key="Software\Microsoft\Windows\CurrentVersion\Run"
               Name="EchoInput"
               Type="string"
