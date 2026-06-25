@@ -84,7 +84,7 @@
       </Directory>
 
       <Directory Id="StartupFolder" Name="Startup">
-        <Component Id="AutoStart" Guid="*" KeyPath="yes">
+        <Component Id="AutoStart" Guid="*">
           <RegistryValue
             Root="HKCU"
             Key="Software\Microsoft\Windows\CurrentVersion\Run"
