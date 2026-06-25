@@ -128,6 +128,7 @@ jobs:
       - name: Build .rpm package
         run: |
           export VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+          export SRC_DIR=$(pwd)
 
           cat > rpm-package.spec << EOF
           Name: echoinput
@@ -149,9 +150,9 @@ jobs:
           mkdir -p %{buildroot}/usr/bin
           mkdir -p %{buildroot}/usr/share/applications
           mkdir -p %{buildroot}/usr/share/icons/hicolor/256x256/apps
-          install -m 755 target/release/echoinput %{buildroot}/usr/bin/echoinput
-          install -m 644 AppDir/echoinput.desktop %{buildroot}/usr/share/applications/echoinput.desktop
-          install -m 644 AppDir/echoinput.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/echoinput.png
+          install -m 755 ${SRC_DIR}/target/release/echoinput %{buildroot}/usr/bin/echoinput
+          install -m 644 ${SRC_DIR}/AppDir/echoinput.desktop %{buildroot}/usr/share/applications/echoinput.desktop
+          install -m 644 ${SRC_DIR}/AppDir/echoinput.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/echoinput.png
 
           %files
           /usr/bin/echoinput

@@ -44,14 +44,6 @@
               Source="$(var.CargoTargetBinDir)\echoinput.exe"
               KeyPath="yes" />
           </Component>
-          <Component Id="License" Guid="*">
-            <File
-              Id="License"
-              Name="LICENSE"
-              DiskId="1"
-              Source="../../LICENSE"
-              KeyPath="yes" />
-          </Component>
         </Directory>
       </Directory>
 
@@ -115,7 +107,6 @@
       Absent="disallow">
 
       <ComponentRef Id="MainExecutable" />
-      <ComponentRef Id="License" />
       <ComponentRef Id="Shortcut" />
       <ComponentRef Id="UninstallShortcut" />
     </Feature>
@@ -129,17 +120,5 @@
 
       <ComponentRef Id="AutoStart" />
     </Feature>
-
-    <UI>
-      <UIRef Id="WixUI_InstallDir" />
-      <Property Id="WIXUI_INSTALLDIR" Value="APPLICATIONFOLDER" />
-
-      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="LicenseDlg" Order="99">1</Publish>
-      <Publish Dialog="LicenseDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="99">1</Publish>
-      <Publish Dialog="LicenseDlg" Control="Next" Event="NewDialog" Value="CustomizeDlg" Order="99">1</Publish>
-      <Publish Dialog="CustomizeDlg" Control="Back" Event="NewDialog" Value="LicenseDlg" Order="99">1</Publish>
-    </UI>
-
-    <WixVariable Id="WixUILicenseRtf" Value="../../LICENSE" />
   </Product>
 </Wix>
