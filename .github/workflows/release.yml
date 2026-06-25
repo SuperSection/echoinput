@@ -355,7 +355,9 @@ jobs:
         with:
           files: |
             artifacts/linux-artifacts/*
-            artifacts/windows-artifacts/*
+            artifacts/windows-artifacts/**/*.zip
+            artifacts/windows-artifacts/**/*.msi
+            artifacts/windows-artifacts/**/*.exe
             artifacts/macos-artifacts/*
           generate_release_notes: true
         env:
