@@ -257,9 +257,13 @@ jobs:
 
   build-macos:
     name: Build macOS (ARM64)
-    runs-on: macos-latest
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
+
+      - name: Clean homebrew taps
+        run: |
+          brew untap aws/tap 2>/dev/null || true
 
       - name: Install system dependencies
         run: |
@@ -346,7 +350,7 @@ jobs:
       contents: write
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: artifacts
 
